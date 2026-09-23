@@ -2692,12 +2692,13 @@ impl Bot {
             return 0;
         }
 
-        // Skip if inventory is already full
+        // A full backpack is not a reason to stop collecting: gems take no slot,
+        // and a stack the bot already carries has room until it reaches 200. Each
+        // object is checked against `Inventory::can_collect` below, which knows
+        // both. Bailing out here meant a bot with every slot used walked past its
+        // own gems.
         let inv_size = self.inventory.size;
         let inv_count = self.inventory.item_count as u32;
-        if inv_count >= inv_size {
-            return 0;
-        }
 
         let pos_x = self.pos_x;
         let pos_y = self.pos_y;

@@ -107,3 +107,41 @@ impl Inventory {
         changed
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bag(size: u32, items: &[(u16, u8)]) -> Inventory {
+        let mut inv = Inventory { size, ..Default::default() };
+        for (id, amount) in items {
+            inv.add_item(*id, *amount);
+        }
+        inv
+    }
+
+    #[test]
+    fn a_stack_has_room_until_two_hundred() {
+        let inv = bag(10, &[(2018, 199)]);
+        assert!(inv.can_collect(2018));
+
+        let inv = bag(10, &[(2018, 200)]);
+        assert!(!inv.can_collect(2018));
+    }
+
+    #[test]
+    fn a_new_item_needs_a_free_slot() {
+        let inv = bag(2, &[(2018, 5)]);
+        assert!(inv.can_collect(2019), "one slot is still free");
+
+        let inv = bag(1, &[(2018, 5)]);
+        assert!(!inv.can_collect(2019), "no slot left for a new item");
+    }
+
+    #[test]
+    fn gems_fit_even_when_every_slot_is_taken() {
+        // Gems are currency, not an inventory item — a full bag does not stop them.
+        let inv = bag(1, &[(2018, 200)]);
+        assert!(inv.can_collect(112));
+    }
+}
