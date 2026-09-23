@@ -226,6 +226,46 @@ pub struct Bot {
     last_ping: u32,
 }
 
+/// Fallback character speed in pixels per second, used until the server sends a
+/// SetCharacterState with the real one.
+const DEFAULT_WALK_SPEED: f32 = 250.0;
+
+/// How many State packets one tile of movement is split into. A client streams a
+/// packet per rendered frame; sending a single packet per tile puts the character
+/// on exact tile centres with zero velocity, which no real movement ever produces.
+const WALK_STEPS: u32 = 3;
+
+/// Interpolates `steps` positions from `start` towards `target`, the last one
+/// exactly on `target`. A zero-length move still yields the target once.
+fn walk_steps(start: (f32, f32), target: (f32, f32), steps: u32) -> Vec<(f32, f32)> {
+    let steps = steps.max(1);
+    (1..=steps)
+        .map(|i| {
+            if i == steps {
+                target
+            } else {
+                let t = i as f32 / steps as f32;
+                (
+                    start.0 + (target.0 - start.0) * t,
+                    start.1 + (target.1 - start.1) * t,
+                )
+            }
+        })
+        .collect()
+}
+
+/// Velocity along one axis: zero when the axis does not move, otherwise `speed`
+/// signed towards the target.
+fn axis_velocity(delta: f32, speed: f32) -> f32 {
+    if delta.abs() < f32::EPSILON {
+        0.0
+    } else if delta < 0.0 {
+        -speed
+    } else {
+        speed
+    }
+}
+
 /// Applies +/- `pct` percent of random jitter to `ms`. `pct` is clamped to 90 so a
 /// delay can never collapse to zero.
 fn jitter_ms(ms: u64, pct: u8) -> u64 {
@@ -2111,37 +2151,61 @@ impl Bot {
     pub fn walk(&mut self, tile_x: u32, tile_y: u32) {
         let target_x = tile_x as f32 * 32.0;
         let target_y = tile_y as f32 * 32.0;
+        let start_x = self.pos_x;
+        let start_y = self.pos_y;
 
-        let facing_left = target_x < self.pos_x;
-        self.pos_x = target_x;
-        self.pos_y = target_y;
+        let facing_left = target_x < start_x;
+
+        // Speed the server assigned this character (SetCharacterState); the client
+        // moves at that rate rather than jumping a whole tile at once.
+        let speed = if self.local.velocity.abs() > f32::EPSILON {
+            self.local.velocity.abs()
+        } else {
+            DEFAULT_WALK_SPEED
+        };
+        let vel_x = axis_velocity(target_x - start_x, speed);
+        let vel_y = axis_velocity(target_y - start_y, speed);
+
+        let steps = walk_steps((start_x, start_y), (target_x, target_y), WALK_STEPS);
+        let step_count = steps.len();
+        let step_delay = self.delays.walk_ms / step_count.max(1) as u64;
+
+        for (i, (x, y)) in steps.into_iter().enumerate() {
+            let last = i + 1 == step_count;
+            self.pos_x = x;
+            self.pos_y = y;
+
+            let mut flags = packet::PacketFlags::WALK | packet::PacketFlags::STANDING;
+            flags.set(packet::PacketFlags::FACING_LEFT, facing_left);
+
+            let pkt = GameUpdatePacket {
+                packet_type: GamePacketType::State,
+                vector_x: x,
+                vector_y: y + 2.0,
+                // Velocity drops to zero on the packet that lands the move, the way
+                // a client reports coming to a stop.
+                vector_x2: if last { 0.0 } else { vel_x },
+                vector_y2: if last { 0.0 } else { vel_y },
+                int_x: -1,
+                int_y: -1,
+                flags,
+                ..Default::default()
+            };
+
+            self.send_game_packet(&pkt, false);
+            self.sleep_jittered(step_delay);
+        }
 
         {
             let mut s = self.state.write().unwrap();
-            s.pos_x = target_x / 32.0;
-            s.pos_y = target_y / 32.0;
+            s.pos_x = self.pos_x / 32.0;
+            s.pos_y = self.pos_y / 32.0;
         }
         self.emit(WsEvent::BotMove {
             bot_id: self.bot_id,
-            x: target_x / 32.0,
-            y: target_y / 32.0,
+            x: self.pos_x / 32.0,
+            y: self.pos_y / 32.0,
         });
-
-        let mut flags = packet::PacketFlags::WALK | packet::PacketFlags::STANDING;
-        flags.set(packet::PacketFlags::FACING_LEFT, facing_left);
-
-        let pkt = GameUpdatePacket {
-            packet_type: GamePacketType::State,
-            vector_x: target_x,
-            vector_y: target_y + 2.0,
-            int_x: -1,
-            int_y: -1,
-            flags,
-            ..Default::default()
-        };
-
-        self.send_game_packet(&pkt, false);
-        self.sleep_jittered(self.delays.walk_ms);
     }
 
     pub fn place(&mut self, offset_x: i32, offset_y: i32, item_id: u32, is_punch: bool) {
@@ -3080,7 +3144,7 @@ impl Bot {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_client_data, jitter_ms};
+    use super::{axis_velocity, build_client_data, jitter_ms, walk_steps, DEFAULT_WALK_SPEED};
     use crate::device::DeviceIdentity;
 
     fn field<'a>(payload: &'a str, key: &str) -> &'a str {
@@ -3088,6 +3152,41 @@ mod tests {
             .lines()
             .find_map(|l| l.strip_prefix(&format!("{key}|")))
             .unwrap_or_else(|| panic!("{key} missing from payload"))
+    }
+
+    #[test]
+    fn walk_lands_exactly_on_the_target_tile() {
+        let steps = walk_steps((0.0, 0.0), (32.0, 64.0), 3);
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps.last().copied(), Some((32.0, 64.0)));
+    }
+
+    #[test]
+    fn intermediate_positions_are_off_the_tile_grid() {
+        let steps = walk_steps((0.0, 0.0), (32.0, 0.0), 3);
+        for (x, _) in &steps[..steps.len() - 1] {
+            assert!(x % 32.0 != 0.0, "intermediate landed on a tile centre: {x}");
+        }
+    }
+
+    #[test]
+    fn positions_advance_towards_the_target() {
+        let steps = walk_steps((100.0, 0.0), (0.0, 0.0), 4);
+        let xs: Vec<f32> = steps.iter().map(|(x, _)| *x).collect();
+        assert!(xs.windows(2).all(|w| w[1] < w[0]), "not monotonic: {xs:?}");
+    }
+
+    #[test]
+    fn a_zero_length_move_still_reports_once() {
+        assert_eq!(walk_steps((64.0, 64.0), (64.0, 64.0), 3).len(), 3);
+        assert_eq!(walk_steps((64.0, 64.0), (64.0, 64.0), 0).len(), 1);
+    }
+
+    #[test]
+    fn velocity_is_signed_towards_the_target_and_zero_when_still() {
+        assert_eq!(axis_velocity(-5.0, DEFAULT_WALK_SPEED), -DEFAULT_WALK_SPEED);
+        assert_eq!(axis_velocity(5.0, DEFAULT_WALK_SPEED), DEFAULT_WALK_SPEED);
+        assert_eq!(axis_velocity(0.0, DEFAULT_WALK_SPEED), 0.0);
     }
 
     #[test]
