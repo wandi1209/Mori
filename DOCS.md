@@ -40,10 +40,16 @@ in-game redirect packet alike.
     "gdpr": 1,
     "cbits": 1024,
     "fz": 22243512,
-    "zf": 31631978
+    "zf": 31631978,
+    "total_playtime": 0
   }
 }
 ```
+
+`total_playtime` is maintained by Mori: the server reports the account's real
+figure in its Track packet, and the login payloads echo it back plus the current
+session, instead of claiming zero playtime on an account the server knows has
+hundreds of hours.
 
 The file is created on first login and is safe to edit while no bot for that account
 is running. Set `country` to the country the account logs in from — it should agree
