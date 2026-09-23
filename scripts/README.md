@@ -49,6 +49,21 @@ The name must match `items.dat` exactly and its seed must be `<name> Seed`, whic
 holds for every tree-grown block. A wrong name stops the script at startup with a
 message rather than farming nothing silently.
 
+### Where blocks get broken
+
+Turning blocks back into seeds means placing one and punching it, a few hundred
+times per cycle. `break_spot` is the tile that happens on:
+
+```lua
+break_spot = { x = 54, y = 22 },   -- nil to use random empty plots instead
+```
+
+Keep it outside `area`. A block that survives its hit budget stays where it was
+placed, and on a farm plot that tile is then never planted again; on the break
+spot the script simply falls back to another tile for that round. One fixed tile
+also means the bot stands still for the break phase rather than walking to a new
+plot for every block.
+
 ### Storing the surplus
 
 Surplus seeds are dropped on the floor once the bot holds `seed_dump_at` of them,

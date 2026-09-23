@@ -111,7 +111,7 @@ mod farm_script_tests {
           local t = tileAt(x, y)
           if not t or t.fg ~= 0 then return end
           t.fg = id
-          if id == 2018 then S.blocks = S.blocks - 1
+          if id == 2018 then S.blocks = S.blocks - 1; S.log[#S.log+1] = "place:" .. x .. "," .. y
           elseif id == 2019 then S.seeds = S.seeds - 1; S.log[#S.log+1] = "plant" end
         end
         function getBot() return bot end
@@ -154,6 +154,7 @@ mod farm_script_tests {
         src = set_config(&src, "dump_world", "\"YOURSTORE\"");
         src = set_config(&src, "area", "{ x1 = 0, y1 = 0, x2 = 99, y2 = 59 }");
         src = set_config(&src, "row_step", "1");
+        src = set_config(&src, "break_spot", "nil");
 
         for (key, value) in patch {
             src = set_config(&src, key, value);
@@ -164,6 +165,19 @@ mod farm_script_tests {
 
         let log: Vec<String> = lua.load("return SIM.log").eval().unwrap();
         (lua, log)
+    }
+
+    #[test]
+    fn break_spot_keeps_the_bot_on_one_tile() {
+        // x 14, y 24 is one of the stub's empty plots.
+        let (_, log) = run_script(&[("break_spot", "{ x = 14, y = 24 }")]);
+
+        let places: Vec<&String> = log.iter().filter(|l| l.starts_with("place:")).collect();
+        assert!(places.len() > 1, "blocks should have been placed");
+        assert!(
+            places.iter().all(|l| l.as_str() == "place:14,24"),
+            "every block should be placed on the break spot, got {places:?}"
+        );
     }
 
     #[test]
