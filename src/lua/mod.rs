@@ -48,7 +48,7 @@ mod farm_script_tests {
     //! script once it reaches the end-of-cycle wait.
 
     const STUBS: &str = r#"
-        local S = { blocks = 0, seeds = 0, world = "", sleeps = 0, log = {} }
+        local S = { blocks = 0, seeds = 0, world = "", sleeps = 0, log = {}, printed = {} }
         _G.SIM = S
 
         local ITEMS = {
@@ -115,6 +115,9 @@ mod farm_script_tests {
         end
         function getBot() return bot end
 
+        local real_print = print
+        function print(msg) S.printed[#S.printed+1] = tostring(msg); real_print(msg) end
+
         function sleep(ms)
           S.sleeps = S.sleeps + 1
           if ms >= 60000 then error("CYCLE_DONE") end   -- the end-of-cycle wait
@@ -138,6 +141,7 @@ mod farm_script_tests {
         assert!(err.contains("CYCLE_DONE"), "script stopped early: {err}");
 
         let log: Vec<String> = lua.load("return SIM.log").eval().unwrap();
+        let printed: Vec<String> = lua.load("return SIM.printed").eval().unwrap();
         let blocks: i64 = lua.load("return SIM.blocks").eval().unwrap();
         let seeds: i64 = lua.load("return SIM.seeds").eval().unwrap();
         let count = |what: &str| log.iter().filter(|l| l.as_str() == what).count();
@@ -150,6 +154,10 @@ mod farm_script_tests {
         assert!(
             log.iter().any(|l| l.starts_with("drop:")),
             "surplus seeds should be dropped in the storage world"
+        );
+        assert!(
+            printed.iter().any(|l| l.contains("seeds/tree")),
+            "the cycle summary should report the seed return per tree"
         );
 
         // The drop lands at the bot's feet, so collecting must be off while it

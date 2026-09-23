@@ -51,6 +51,25 @@ feet and would otherwise be picked straight back up — warps home, and turns it
 on again there. It also refuses to drop unless it confirms it is actually in the
 storage world.
 
+### Sizing the farm
+
+Every cycle ends with a line that answers whether the farm pays for itself:
+
+```
+Dark Yellow Block cycle: 96 trees -> 198 blocks -> 71 seeds (0.74 seeds/tree), 71 replanted [losing seeds]
+```
+
+A farm sustains itself when each tree returns at least one seed on average —
+`seeds/tree >= 1`. That ratio does not depend on how many plots there are: plots
+scale the throughput and the surplus, not the break-even. Below 1, no farm size
+saves it; the seed stock shrinks every cycle until it runs out.
+
+Plot count still matters for two other reasons. Small farms swing: a bad cycle can
+empty the stock, which is what `seed_keep` cushions. And harvesting stops at the
+200-block stack cap, so a farm yielding more than that per cycle is drained over
+several passes — `max_passes` sets how many harvest-and-break rounds one cycle may
+take.
+
 `cargo test farm_script_completes_a_cycle` runs the script against a stub world —
 six plots, three ready trees — and checks that a full harvest, break, plant and
 dump cycle happens.

@@ -35,6 +35,8 @@ local CONFIG = {
   seed_keep     = 10,           -- seeds kept back after a dump
 
   -- Guard rails.
+  max_passes       = 8,     -- harvest+break rounds per cycle; a farm bigger than
+                            -- the 200-block stack cap needs more than one
   max_break_rounds = 400,   -- place-and-break attempts per cycle
   extra_hits       = 4,     -- punches on top of the item's own strength
   step_timeout_ms  = 8000,  -- giving up on a walk or a warp
@@ -158,22 +160,26 @@ end
 -- ── phases ─────────────────────────────────────────────────────────────────
 
 --- Harvests ready trees until none are left or the block stack fills up.
+--- Returns how many trees were actually punched, for the cycle summary.
 local function harvest(crop)
   local trees = readyTrees()
+  local picked = 0
   log(crop.name .. " harvest: " .. #trees .. " ready, "
     .. inv(crop.block_id) .. " blocks held")
 
   for _, plot in ipairs(trees) do
     if not getInventory():canCollect(crop.block_id) then
       log(crop.name .. " harvest: stack full, switching to break phase")
-      return
+      return picked
     end
-    if not bot:isInWorld(CONFIG.world) then return end
+    if not bot:isInWorld(CONFIG.world) then return picked end
 
     if goTo(plot.x, plot.y) then
       punchUntilClear(crop, plot.x, plot.y)
+      picked = picked + 1
     end
   end
+  return picked
 end
 
 --- Places blocks back down and breaks them, which is what yields seeds.
@@ -209,18 +215,21 @@ end
 --- Plants one seed on every free plot, until the seeds run out.
 local function plant(crop)
   local free = emptyPlots()
+  local planted = 0
   log(crop.name .. " plant: " .. #free .. " free plots, "
     .. inv(crop.seed_id) .. " seeds held")
 
   for _, plot in ipairs(free) do
-    if inv(crop.seed_id) <= 0 then return end
-    if not bot:isInWorld(CONFIG.world) then return end
+    if inv(crop.seed_id) <= 0 then return planted end
+    if not bot:isInWorld(CONFIG.world) then return planted end
 
     if goTo(plot.x, plot.y) then
       bot:place(plot.x, plot.y, crop.seed_id)
+      planted = planted + 1
       nap(CONFIG.action_delay_ms)
     end
   end
+  return planted
 end
 
 --- Drops surplus seeds in the storage world, keeping `seed_keep` back.
@@ -253,10 +262,39 @@ end
 local function runCycle(crop)
   if not goToWorld(CONFIG.world, CONFIG.world_id) then return end
   bot:setAutoCollect(true)
-  harvest(crop)
-  breakBlocks(crop)
-  plant(crop)
+
+  -- Everything needed to answer "does this farm pay for itself": seeds returned
+  -- per tree has to reach 1, or the seed stock shrinks every cycle no matter how
+  -- many plots there are.
+  local seeds_before = inv(crop.seed_id)
+
+  -- Harvesting stops when the block stack hits 200, so a farm that yields more
+  -- than that in one go needs several passes: harvest what fits, turn it into
+  -- seeds, come back for the rest.
+  local harvested = 0
+  local broken_from = 0
+  for pass = 1, CONFIG.max_passes do
+    local picked = harvest(crop)
+    if picked == 0 then break end
+
+    harvested = harvested + picked
+    broken_from = broken_from + inv(crop.block_id)
+    breakBlocks(crop)
+
+    if #readyTrees() == 0 then break end
+    log(crop.name .. " pass " .. pass .. " done, more trees are still ready")
+  end
+
+  local seeds_after_break = inv(crop.seed_id)
+  local planted = plant(crop)
   dumpSeeds(crop)
+
+  local seeds_gained = seeds_after_break - seeds_before
+  local per_tree = harvested > 0 and (seeds_gained / harvested) or 0
+  log(string.format(
+    "%s cycle: %d trees -> %d blocks -> %d seeds (%.2f seeds/tree), %d replanted%s",
+    crop.name, harvested, broken_from, seeds_gained, per_tree, planted,
+    per_tree >= 1 and " [sustains itself]" or " [losing seeds]"))
 end
 
 -- ── main loop ──────────────────────────────────────────────────────────────
