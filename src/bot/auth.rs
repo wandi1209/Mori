@@ -1,5 +1,6 @@
 use crate::constants::{GAME_VER, PROTOCOL};
 use crate::dashboard::get_dashboard_proxied;
+use crate::device::DeviceIdentity;
 use crate::login::{LoginError, get_legacy_token_proxied};
 use crate::server_data::{LoginInfo, get_server_data_proxied};
 use std::net::SocketAddr;
@@ -16,6 +17,7 @@ pub(super) fn fetch_credentials(
     username: &str,
     password: &str,
     proxy: Option<&Socks5Config>,
+    device: &DeviceIdentity,
     log: &mut dyn FnMut(String),
 ) -> Credentials {
     let proxy_url = proxy.map(|p| p.to_url());
@@ -48,6 +50,7 @@ pub(super) fn fetch_credentials(
             &login_info,
             &server_data.meta,
             proxy_url,
+            device,
         ) {
             Ok(d) => d,
             Err(e) => {

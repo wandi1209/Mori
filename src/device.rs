@@ -44,10 +44,53 @@ pub struct DeviceIdentity {
     pub wk: String,
     /// Hashed into the login packet's `hash2` field.
     pub hash2_seed: String,
+    /// Fields below describe the account and the client build. Every payload of a
+    /// session has to carry the same values: the dashboard request, the check-token
+    /// call and the in-game redirect packet all used to hardcode different ones, so
+    /// a single account claimed three countries and three ages within minutes.
+    /// Edit `country` to match the exit IP this account logs in from.
+    #[serde(default = "default_country")]
+    pub country: String,
+    #[serde(default = "default_player_age")]
+    pub player_age: u8,
+    #[serde(default = "default_gdpr")]
+    pub gdpr: u8,
+    #[serde(default = "default_cbits")]
+    pub cbits: u32,
+    #[serde(default = "default_fz")]
+    pub fz: i64,
+    #[serde(default = "default_zf")]
+    pub zf: i64,
+}
+
+fn default_country() -> String {
+    "us".to_string()
+}
+
+fn default_player_age() -> u8 {
+    20
+}
+
+fn default_gdpr() -> u8 {
+    1
+}
+
+fn default_cbits() -> u32 {
+    1024
+}
+
+fn default_fz() -> i64 {
+    22243512
+}
+
+fn default_zf() -> i64 {
+    31631978
 }
 
 impl DeviceIdentity {
-    fn generate() -> Self {
+    /// A fresh identity. Callers normally go through [`load_or_create`]; this is
+    /// public so other modules can build one in tests.
+    pub fn generate() -> Self {
         let mut rng = rand::rng();
         let oui = OUIS[rng.random_range(0..OUIS.len())];
         Self {
@@ -60,6 +103,14 @@ impl DeviceIdentity {
             ),
             wk: random_hex(32),
             hash2_seed: random_hex(16),
+            country: default_country(),
+            // A real account carries whatever age its owner entered, so vary it per
+            // identity instead of every bot reporting the same number.
+            player_age: rng.random_range(18..=35),
+            gdpr: default_gdpr(),
+            cbits: default_cbits(),
+            fz: default_fz(),
+            zf: default_zf(),
         }
     }
 }
@@ -217,5 +268,31 @@ mod tests {
         assert_eq!(id.rid.len(), 32);
         assert_eq!(id.wk.len(), 32);
         assert_eq!(id.hash2_seed.len(), 16);
+    }
+
+    #[test]
+    fn generated_player_age_is_plausible() {
+        for _ in 0..100 {
+            let age = DeviceIdentity::generate().player_age;
+            assert!((18..=35).contains(&age), "implausible age: {age}");
+        }
+    }
+
+    #[test]
+    fn a_store_written_before_personas_existed_still_loads() {
+        let json = r#"{
+            "acct": {
+                "rid": "0123456789ABCDEF0123456789ABCDEF",
+                "mac": "A4:83:E7:11:22:33",
+                "wk": "FEDCBA9876543210FEDCBA9876543210",
+                "hash2_seed": "0123456789ABCDEF"
+            }
+        }"#;
+        let store: BTreeMap<String, DeviceIdentity> = serde_json::from_str(json).unwrap();
+        let id = &store["acct"];
+        assert_eq!(id.mac, "A4:83:E7:11:22:33");
+        assert_eq!(id.country, "us");
+        assert_eq!(id.player_age, 20);
+        assert_eq!(id.cbits, 1024);
     }
 }

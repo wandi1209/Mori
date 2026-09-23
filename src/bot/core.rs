@@ -123,7 +123,9 @@ pub struct Bot {
     ltoken: String,
     /// `meta` from server_data.php — echoed in all login packets.
     meta: String,
-    /// Per-session random values computed once at startup.
+    /// Persistent identity and account persona for this bot, from `data/devices.json`.
+    device: crate::device::DeviceIdentity,
+    /// Values taken from `device`, kept here for the hot paths.
     pub mac: String,
     hash: i32,
     hash2: i32,
@@ -236,6 +238,35 @@ fn jitter_ms(ms: u64, pct: u8) -> u64 {
     (ms as i64 + offset).max(0) as u64
 }
 
+/// Builds the `clientData` blob sent to the check-token endpoint. Every value that
+/// describes the account or the client build comes from `device`, so the dashboard
+/// request, this payload and the in-game redirect packet stay consistent with each
+/// other for the lifetime of an account.
+fn build_client_data(
+    device: &crate::device::DeviceIdentity,
+    meta: &str,
+    klv: &str,
+    hash: i32,
+    hash2: i32,
+) -> String {
+    format!(
+        "tankIDName|\ntankIDPass|\nrequestedName|\nf|1\nprotocol|{PROTOCOL}\n\
+game_version|{GAME_VER}\nfz|{fz}\ncbits|{cbits}\nplayer_age|{age}\nGDPR|{gdpr}\nFCMToken|\n\
+category|_-5100\ntotalPlaytime|0\nklv|{klv}\nhash2|{hash2}\nmeta|{meta}\nfhash|{FHASH}\n\
+rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|{country}\nhash|{hash}\nmac|{mac}\n\
+wk|{wk}\nzf|{zf}\nlmode|1\n",
+        fz = device.fz,
+        cbits = device.cbits,
+        age = device.player_age,
+        gdpr = device.gdpr,
+        rid = device.rid,
+        country = device.country,
+        mac = device.mac,
+        wk = device.wk,
+        zf = device.zf,
+    )
+}
+
 fn sorted_blacklist_vec(set: &HashSet<u16>) -> Vec<u16> {
     let mut v: Vec<u16> = set.iter().copied().collect();
     v.sort_unstable();
@@ -286,7 +317,7 @@ impl Bot {
         let wk = identity.wk.clone();
         let rid = identity.rid.clone();
 
-        let creds = fetch_credentials(username, password, proxy.as_ref(), &mut log_fn);
+        let creds = fetch_credentials(username, password, proxy.as_ref(), &identity, &mut log_fn);
 
         let host = Self::create_host(proxy.as_ref());
         let mut bot = Bot {
@@ -298,6 +329,7 @@ impl Bot {
             },
             ltoken: creds.ltoken,
             meta: creds.meta,
+            device: identity,
             mac,
             hash,
             hash2,
@@ -437,13 +469,7 @@ impl Bot {
         };
 
         let klv = compute_klv(GAME_VER, &PROTOCOL.to_string(), &rid, hash);
-        let login_data = format!(
-            "tankIDName|\ntankIDPass|\nrequestedName|\nf|1\nprotocol|{PROTOCOL}\n\
-game_version|{GAME_VER}\nfz|22243512\ncbits|1024\nplayer_age|20\nGDPR|2\nFCMToken|\n\
-category|_-5100\ntotalPlaytime|0\nklv|{klv}\nhash2|{hash2}\nmeta|{}\nfhash|{FHASH}\n\
-rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{hash}\nmac|{mac}\nwk|{wk}\nzf|31631978\nlmode|1\n",
-            server_data.meta,
-        );
+        let login_data = build_client_data(&identity, &server_data.meta, &klv, hash, hash2);
 
         let ltoken = match check_token(&ltoken, &login_data, proxy_url_ref) {
             Ok(new_token) => {
@@ -465,6 +491,7 @@ rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{hash}\nmac|{mac}
             login_method: LoginMethod::Ltoken,
             ltoken,
             meta: server_data.meta,
+            device: identity,
             mac,
             hash,
             hash2,
@@ -624,12 +651,12 @@ rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{hash}\nmac|{mac}
         data.push_str("tankIDPass|\n");
         data.push_str("requestedName|\n");
         data.push_str("f|1\n");
-        data.push_str("protocol|211\n");
+        data.push_str(&format!("protocol|{PROTOCOL}\n"));
         data.push_str(&format!("game_version|{}\n", GAME_VER));
-        data.push_str("fz|47142936\n");
-        data.push_str("cbits|1536\n");
-        data.push_str("player_age|18\n");
-        data.push_str("GDPR|1\n");
+        data.push_str(&format!("fz|{}\n", self.device.fz));
+        data.push_str(&format!("cbits|{}\n", self.device.cbits));
+        data.push_str(&format!("player_age|{}\n", self.device.player_age));
+        data.push_str(&format!("GDPR|{}\n", self.device.gdpr));
         data.push_str("FCMToken|\n");
         data.push_str("category|_-5100\n");
         data.push_str("totalPlaytime|0\n");
@@ -640,11 +667,11 @@ rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{hash}\nmac|{mac}
         data.push_str(&format!("rid|{}\n", self.rid));
         data.push_str("platformID|0,1,1\n");
         data.push_str("deviceVersion|0\n");
-        data.push_str("country|ma\n");
+        data.push_str(&format!("country|{}\n", self.device.country));
         data.push_str(&format!("hash|{}\n", self.hash));
         data.push_str(&format!("mac|{}\n", self.mac));
         data.push_str(&format!("wk|{}\n", self.wk));
-        data.push_str("zf|-821693372\n");
+        data.push_str(&format!("zf|{}\n", self.device.zf));
         data.push_str(&format!("lmode|{}\n", r.lmode));
         data.push_str(&format!("user|{}\n", r.user));
         data.push_str(&format!("token|{}\n", r.token));
@@ -660,13 +687,7 @@ rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{hash}\nmac|{mac}
     /// Uses the bot's stable per-session values (rid, mac, wk, hash, hash2).
     fn build_login_data(&self) -> String {
         let klv = compute_klv(GAME_VER, &PROTOCOL.to_string(), &self.rid, self.hash);
-        format!(
-            "tankIDName|\ntankIDPass|\nrequestedName|\nf|1\nprotocol|{PROTOCOL}\n\
-game_version|{GAME_VER}\nfz|22243512\ncbits|1024\nplayer_age|20\nGDPR|2\nFCMToken|\n\
-category|_-5100\ntotalPlaytime|0\nklv|{klv}\nhash2|{}\nmeta|{}\nfhash|{FHASH}\n\
-rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nzf|31631978\nlmode|1\n",
-            self.hash2, self.meta, self.rid, self.hash, self.mac, self.wk,
-        )
+        build_client_data(&self.device, &self.meta, &klv, self.hash, self.hash2)
     }
 
     /// Refreshes `self.ltoken`: tries check_token first, then falls back based on login method.
@@ -715,8 +736,14 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
                         });
                     }
                 };
-                let creds =
-                    fetch_credentials(&username, &password, proxy_clone.as_ref(), &mut log_fn);
+                let device = self.device.clone();
+                let creds = fetch_credentials(
+                    &username,
+                    &password,
+                    proxy_clone.as_ref(),
+                    &device,
+                    &mut log_fn,
+                );
                 self.ltoken = creds.ltoken;
                 self.meta = creds.meta;
             }
@@ -3053,7 +3080,35 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
 
 #[cfg(test)]
 mod tests {
-    use super::jitter_ms;
+    use super::{build_client_data, jitter_ms};
+    use crate::device::DeviceIdentity;
+
+    fn field<'a>(payload: &'a str, key: &str) -> &'a str {
+        payload
+            .lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}|")))
+            .unwrap_or_else(|| panic!("{key} missing from payload"))
+    }
+
+    #[test]
+    fn client_data_carries_the_stored_persona() {
+        let mut device = DeviceIdentity::generate();
+        device.country = "id".into();
+        device.player_age = 27;
+
+        let payload = build_client_data(&device, "META", "KLV", 1, 2);
+
+        assert_eq!(field(&payload, "country"), "id");
+        assert_eq!(field(&payload, "player_age"), "27");
+        assert_eq!(field(&payload, "GDPR"), device.gdpr.to_string());
+        assert_eq!(field(&payload, "cbits"), device.cbits.to_string());
+        assert_eq!(field(&payload, "fz"), device.fz.to_string());
+        assert_eq!(field(&payload, "zf"), device.zf.to_string());
+        assert_eq!(field(&payload, "mac"), device.mac);
+        assert_eq!(field(&payload, "wk"), device.wk);
+        assert_eq!(field(&payload, "rid"), device.rid);
+        assert_eq!(field(&payload, "protocol"), crate::constants::PROTOCOL.to_string());
+    }
 
     #[test]
     fn jitter_stays_within_the_requested_band() {

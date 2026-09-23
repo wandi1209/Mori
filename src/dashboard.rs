@@ -1,7 +1,8 @@
 use std::time::Duration;
 use scraper::{Html, Selector};
 use crate::constants::FHASH;
-use crate::protocol::crypto::{compute_klv, generate_rid, hash_string};
+use crate::device::DeviceIdentity;
+use crate::protocol::crypto::{compute_klv, hash_string};
 use crate::server_data::LoginInfo;
 use serde_json;
 
@@ -15,8 +16,13 @@ pub struct DashboardLinks {
     pub growtopia: Option<String>,
 }
 
-pub fn get_dashboard(login_url: &str, login_info: &LoginInfo, meta: &str) -> Result<DashboardLinks> {
-    get_dashboard_proxied(login_url, login_info, meta, None)
+pub fn get_dashboard(
+    login_url: &str,
+    login_info: &LoginInfo,
+    meta: &str,
+    device: &DeviceIdentity,
+) -> Result<DashboardLinks> {
+    get_dashboard_proxied(login_url, login_info, meta, None, device)
 }
 
 pub fn get_dashboard_proxied(
@@ -24,9 +30,12 @@ pub fn get_dashboard_proxied(
     login_info: &LoginInfo,
     meta: &str,
     proxy_url: Option<&str>,
+    device: &DeviceIdentity,
 ) -> Result<DashboardLinks> {
-    let rid = generate_rid();
-    let hash = hash_string("RT");
+    // Same device and same account details as every later payload — this request
+    // used to invent its own rid and claim a different country and age.
+    let rid = device.rid.clone();
+    let hash = hash_string(&format!("{}RT", device.mac));
     let klv = compute_klv(
         &login_info.game_version,
         &login_info.protocol.to_string(),
@@ -34,30 +43,7 @@ pub fn get_dashboard_proxied(
         hash,
     );
 
-    let body = build_pipe_body(&[
-        ("tankIDName",    ""),
-        ("tankIDPass",    ""),
-        ("requestedName", ""),
-        ("f",             "1"),
-        ("protocol",      &login_info.protocol.to_string()),
-        ("game_version",  &login_info.game_version),
-        ("cbits",         "0"),
-        ("player_age",    "25"),
-        ("GDPR",          "1"),
-        ("FCMToken",      ""),
-        ("category",      "_-5100"),
-        ("totalPlaytime", "0"),
-        ("klv",           &klv),
-        ("meta",          meta),
-        ("fhash",         &FHASH.to_string()),
-        ("rid",           &rid),
-        ("platformID",    "2"),
-        ("deviceVersion", "0"),
-        ("country",       "us"),
-        ("hash",          &hash.to_string()),
-        ("mac",           "02:00:00:00:00:00"),
-        ("wk",            "NONE0"),
-    ]);
+    let body = build_dashboard_body(login_info, meta, device, &klv, hash);
 
     let agent = if let Some(p) = proxy_url {
         let proxy = ureq::Proxy::new(p)?;
@@ -115,6 +101,73 @@ pub fn get_dashboard_proxied(
     })
 }
 
+/// The form body of the dashboard request. Split out so a test can check it against
+/// the same persona the later login payloads use.
+fn build_dashboard_body(
+    login_info: &LoginInfo,
+    meta: &str,
+    device: &DeviceIdentity,
+    klv: &str,
+    hash: i32,
+) -> String {
+    build_pipe_body(&[
+        ("tankIDName",    ""),
+        ("tankIDPass",    ""),
+        ("requestedName", ""),
+        ("f",             "1"),
+        ("protocol",      &login_info.protocol.to_string()),
+        ("game_version",  &login_info.game_version),
+        ("cbits",         &device.cbits.to_string()),
+        ("player_age",    &device.player_age.to_string()),
+        ("GDPR",          &device.gdpr.to_string()),
+        ("FCMToken",      ""),
+        ("category",      "_-5100"),
+        ("totalPlaytime", "0"),
+        ("klv",           klv),
+        ("meta",          meta),
+        ("fhash",         &FHASH.to_string()),
+        ("rid",           &device.rid),
+        ("platformID",    "2"),
+        ("deviceVersion", "0"),
+        ("country",       &device.country),
+        ("hash",          &hash.to_string()),
+        ("mac",           &device.mac),
+        ("wk",            &device.wk),
+    ])
+}
+
 fn build_pipe_body(fields: &[(&str, &str)]) -> String {
     fields.iter().map(|(k, v)| format!("{k}|{v}\n")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dashboard_body_matches_the_stored_persona() {
+        let mut device = DeviceIdentity::generate();
+        device.country = "id".into();
+        device.player_age = 27;
+        let login_info = LoginInfo {
+            protocol: 225,
+            game_version: "5.51".into(),
+        };
+
+        let body = build_dashboard_body(&login_info, "META", &device, "KLV", 7);
+        let field = |key: &str| -> String {
+            body.lines()
+                .find_map(|l| l.strip_prefix(&format!("{key}|")))
+                .unwrap_or_else(|| panic!("{key} missing"))
+                .to_string()
+        };
+
+        assert_eq!(field("country"), "id");
+        assert_eq!(field("player_age"), "27");
+        assert_eq!(field("GDPR"), device.gdpr.to_string());
+        assert_eq!(field("cbits"), device.cbits.to_string());
+        assert_eq!(field("rid"), device.rid);
+        assert_eq!(field("mac"), device.mac);
+        assert_eq!(field("wk"), device.wk);
+    }
 }

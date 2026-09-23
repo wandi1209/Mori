@@ -13,6 +13,43 @@ All endpoints return `application/json`.
 Most endpoints are protected by authentication except for the frontend static files and `/auth/*` endpoints. Protected API endpoints require an `Authorization: Bearer <token>` header.
 The application is meant for a single user. Credentials are saved locally to `user.json`.
 
+Two files hold local state, both under `data/` relative to the working directory:
+
+| File | Contents |
+|------|----------|
+| `data/user.json` | Argon2 hash of the master password |
+| `data/devices.json` | One device identity per account (see below) |
+
+### Device identity (`data/devices.json`)
+
+The login payloads carry values a real client derives once from its machine and its
+account, so they must not change between logins or differ between payloads. Mori
+stores them per account — keyed by username for legacy login, by rid for ltoken
+login — and reuses them for the dashboard request, the check-token calls and the
+in-game redirect packet alike.
+
+```json
+{
+  "my_account": {
+    "rid": "B828278B9CB421418136B25BF61567C5",
+    "mac": "F0:25:B7:64:F7:FE",
+    "wk": "36E8A3A5C707FAC0B10866DF8DF413B1",
+    "hash2_seed": "137A1EE14F044CF5",
+    "country": "us",
+    "player_age": 33,
+    "gdpr": 1,
+    "cbits": 1024,
+    "fz": 22243512,
+    "zf": 31631978
+  }
+}
+```
+
+The file is created on first login and is safe to edit while no bot for that account
+is running. Set `country` to the country the account logs in from — it should agree
+with the exit IP of the proxy, or of the connection when no proxy is configured.
+Deleting an entry makes the next login generate a fresh identity for that account.
+
 ---
 
 ### GET `/auth/status`
