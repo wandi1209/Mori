@@ -4,3 +4,4 @@ user.json
 devices.json
 data/version.json
 data/worlds/
+scripts/farm.local.lua

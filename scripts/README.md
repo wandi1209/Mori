@@ -3,6 +3,10 @@
 Lua scripts for the bot script tab. Paste one in, edit the `CONFIG` block at the
 top, run it.
 
+The files here ship with placeholder worlds and coordinates. Keep your own filled
+-in version as `farm.local.lua`, which git ignores, so pulling an update to the
+script never overwrites your farm's numbers.
+
 | Script | What it does |
 |--------|--------------|
 | `farm.lua` | Full crop cycle for one tree-grown block: harvest ready trees, break blocks back into seeds once the stack fills, replant every free plot, dump surplus seeds in a storage world, then wait out the growth timer and repeat. |

@@ -44,6 +44,13 @@ local CONFIG = {
   seed_dump_at  = 50,           -- surplus seeds that trigger a dump run
   seed_keep     = 10,           -- seeds kept back after a dump
 
+  -- Where blocks are placed and broken back into seeds. One tile, reused every
+  -- round, so the bot stands still instead of running across the farm for each
+  -- of a few hundred blocks. Keep it out of `area`: a block that survives its
+  -- hit budget stays on the tile, and inside the farm that plot is then never
+  -- planted again. Set to nil to break on random empty plots instead.
+  break_spot = { x = 6, y = 24 },
+
   -- Guard rails.
   max_passes       = 8,     -- harvest+break rounds per cycle; a farm bigger than
                             -- the 200-block stack cap needs more than one
@@ -209,13 +216,19 @@ local function breakBlocks(crop)
   while inv(crop.block_id) > 0 and rounds < CONFIG.max_break_rounds do
     if not bot:isInWorld(CONFIG.world) then return end
 
-    local free = emptyPlots()
-    if #free == 0 then
-      log(crop.name .. " break: no free plot to place on")
-      return
+    -- The dedicated spot, as long as it is clear; otherwise fall back to any
+    -- empty plot, which also covers a block left standing on the spot itself.
+    local plot = CONFIG.break_spot
+    local spot_tile = plot and getTile(plot.x, plot.y)
+    if not plot or (spot_tile and spot_tile.fg ~= 0) then
+      local free = emptyPlots()
+      if #free == 0 then
+        log(crop.name .. " break: no free tile to place on")
+        return
+      end
+      plot = free[math.random(#free)]
     end
 
-    local plot = free[math.random(#free)]
     if goTo(plot.x, plot.y) then
       bot:place(plot.x, plot.y, crop.block_id)
       nap(CONFIG.action_delay_ms)
