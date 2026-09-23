@@ -3194,6 +3194,17 @@ impl Bot {
                 self.find_path(x, y);
             }
             BotCommand::RunScript { content } => {
+                // An empty editor looks exactly like a script that finished
+                // instantly, which is a confusing way to learn nothing ran.
+                if content.trim().is_empty() {
+                    self.log_console("[Bot] script is empty, nothing to run".to_string());
+                    return;
+                }
+                self.log_console(format!(
+                    "[Bot] running script ({} lines, {} chars)",
+                    content.lines().count(),
+                    content.len()
+                ));
                 self.set_script_running(true);
                 // Stop any currently running script first.
                 self.script_stop.store(true, Ordering::Relaxed);
@@ -3218,10 +3229,13 @@ impl Bot {
                 let state = self.state.clone();
                 let stop_flag = self.script_stop.clone();
                 let username = self.username.clone();
+                let ws_tx = self.ws_tx.clone();
+                let bot_id = self.bot_id;
 
                 std::thread::spawn(move || {
                     crate::lua::run_script_threaded(
                         req_tx, reply_rx, event_rx, items, state, stop_flag, username, content,
+                        ws_tx, bot_id,
                     );
                 });
             }

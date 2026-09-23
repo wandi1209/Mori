@@ -945,6 +945,7 @@ impl LuaUserData for LuaLogin {
 // ── Public entry points ───────────────────────────────────────────────────────
 
 /// Entry point called by the spawned script thread.
+#[allow(clippy::too_many_arguments)]
 pub fn run_script_threaded(
     req_tx:    crossbeam_channel::Sender<crate::script_channel::ScriptRequest>,
     reply_rx:  crossbeam_channel::Receiver<crate::script_channel::ScriptReply>,
@@ -954,8 +955,12 @@ pub fn run_script_threaded(
     stop_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     username:  String,
     script:    String,
+    ws_tx:     Option<crate::events::WsTx>,
+    bot_id:    u32,
 ) {
-    run_script_inner(req_tx, reply_rx, event_rx, items, state, stop_flag, username, script);
+    run_script_inner(
+        req_tx, reply_rx, event_rx, items, state, stop_flag, username, script, ws_tx, bot_id,
+    );
 }
 
 fn run_script_inner(
@@ -967,7 +972,21 @@ fn run_script_inner(
     stop_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     username:  String,
     script:    String,
+    ws_tx:     Option<crate::events::WsTx>,
+    bot_id:    u32,
 ) {
+    // A script that fails says so in the bot's console, and the console is only
+    // live over the websocket — pushing to the state alone left the error
+    // invisible until something else refetched it.
+    let report = |state: &std::sync::Arc<std::sync::RwLock<crate::bot_state::BotState>>,
+                  msg: String| {
+        println!("{msg}");
+        state.write().unwrap().console.push(msg.clone());
+        if let Some(tx) = &ws_tx {
+            let _ = tx.send(crate::events::WsEvent::Console { bot_id, message: msg });
+        }
+    };
+
     let lua = Lua::new_with(
         mlua::StdLib::TABLE | mlua::StdLib::STRING | mlua::StdLib::MATH | mlua::StdLib::IO,
         mlua::LuaOptions::default(),
@@ -1422,13 +1441,13 @@ end
     };
 
     if let Err(e) = setup() {
-        state.write().unwrap().console.push(format!("`4[Lua setup error] {e}"));
+        report(&state, format!("`4[Lua setup error] {e}"));
         return;
     }
 
     if let Err(e) = lua.load(&script).exec() {
         if !e.to_string().contains("__script_stop__") {
-            state.write().unwrap().console.push(format!("`4[Lua] {e}"));
+            report(&state, format!("`4[Lua] {e}"));
         }
     }
 }
