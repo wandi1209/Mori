@@ -1136,11 +1136,16 @@ impl Bot {
                     self.log_console(format!("[Bot] Connected: peer {}", id.0));
                 }
 
-                enet::EventNoRef::Disconnect { peer: id, .. } => {
+                enet::EventNoRef::Disconnect { peer: id, data } => {
                     self.peer_id = None;
                     self.pathfind_target = None;
                     self.pathfind_recalc = false;
-                    self.log_console(format!("[Bot] Disconnected: peer {}", id.0));
+                    // The server puts a reason code in the disconnect; throwing it
+                    // away leaves a rejected login looking like a dropped link.
+                    self.log_console(format!(
+                        "[Bot] Disconnected: peer {} (code {data})",
+                        id.0
+                    ));
                     {
                         let mut s = self.state.write().unwrap();
                         s.status = BotStatus::Connecting;
@@ -1596,6 +1601,22 @@ impl Bot {
                 self.build_login_packet()
             }
         };
+
+        // A rejected login is answered with a silent disconnect, so the only way to
+        // tell a stale token from a malformed packet is to see what went out. The
+        // token itself is a live credential and stays out of the log.
+        let summary: Vec<&str> = data
+            .lines()
+            .filter_map(|l| l.split('|').next())
+            .filter(|k| !k.is_empty())
+            .collect();
+        self.log_console(format!(
+            "[Bot] login packet: {} field(s) [{}], token {} chars",
+            summary.len(),
+            summary.join(", "),
+            self.ltoken.len()
+        ));
+
         self.send_text(&data);
     }
 
