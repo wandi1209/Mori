@@ -199,6 +199,10 @@ pub struct Bot {
     session_until: Option<std::time::Instant>,
     /// Throttles the schedule check to once a second.
     schedule_checked: std::time::Instant,
+    /// Set when the peer connects, cleared on ServerHello. The server is supposed
+    /// to greet a new connection; when it accepts one and then says nothing, the
+    /// bot used to sit there forever with no status and no log line.
+    hello_deadline: Option<std::time::Instant>,
     /// Item database for collision-type lookups.
     pub items_dat: Arc<ItemsDat>,
     /// Forwards events to the running script thread (None when no script is active).
@@ -238,6 +242,10 @@ pub struct Bot {
     /// Last broadcast ping value — used to suppress redundant BotPing events.
     last_ping: u32,
 }
+
+/// How long to wait for the server's greeting before treating the connection as
+/// dead. The real handshake arrives in well under a second.
+const SERVER_HELLO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Fallback character speed in pixels per second, used until the server sends a
 /// SetCharacterState with the real one.
@@ -465,6 +473,7 @@ impl Bot {
             rest_until: None,
             session_until: None,
             schedule_checked: std::time::Instant::now(),
+            hello_deadline: None,
             items_dat,
             event_tx: None,
             script_req_rx: None,
@@ -723,6 +732,7 @@ impl Bot {
             rest_until: None,
             session_until: None,
             schedule_checked: std::time::Instant::now(),
+            hello_deadline: None,
             items_dat,
             event_tx: None,
             script_req_rx: None,
@@ -892,6 +902,30 @@ impl Bot {
             self.hash2,
             self.total_playtime(),
         )
+    }
+
+    /// Gives up on a connection the server accepted but never greeted. Growtopia
+    /// sends ServerHello as soon as a peer connects; silence means the login was
+    /// never even offered, which is worth saying rather than hanging.
+    fn tick_silent_server(&mut self) {
+        let Some(deadline) = self.hello_deadline else {
+            return;
+        };
+        if std::time::Instant::now() < deadline {
+            return;
+        }
+
+        self.hello_deadline = None;
+        let reason = format!(
+            "server accepted the connection but sent no ServerHello within {}s",
+            SERVER_HELLO_TIMEOUT.as_secs()
+        );
+        self.log_console(format!("[Bot] {reason}"));
+        {
+            let mut s = self.state.write().unwrap();
+            s.status_detail = Some(reason);
+        }
+        self.disconnect();
     }
 
     /// Applies the active-hours schedule: logs the bot out when it is outside the
@@ -1083,6 +1117,7 @@ impl Bot {
                     }
                 }
             }
+            self.tick_silent_server();
             self.tick_schedule();
             while let Ok(cmd) = self.cmd_rx.try_recv() {
                 self.handle_command(cmd);
@@ -1134,6 +1169,8 @@ impl Bot {
                 enet::EventNoRef::Connect { peer: id, .. } => {
                     self.peer_id = Some(id);
                     self.log_console(format!("[Bot] Connected: peer {}", id.0));
+                    self.hello_deadline =
+                        Some(std::time::Instant::now() + SERVER_HELLO_TIMEOUT);
                 }
 
                 enet::EventNoRef::Disconnect { peer: id, data } => {
@@ -1591,6 +1628,7 @@ impl Bot {
     }
 
     fn on_server_hello(&mut self) {
+        self.hello_deadline = None;
         let data = match self.redirect.take() {
             Some(r) => {
                 self.log_console(format!("[Bot] ServerHello (redirect → {})", r.door_id));
