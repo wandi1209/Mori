@@ -20,6 +20,7 @@ Two files hold local state, both under `data/` relative to the working directory
 | `data/user.json` | Argon2 hash of the master password |
 | `data/devices.json` | One device identity per account (see below) |
 | `data/version.json` | Client version the bot claims (optional; defaults are compiled in) |
+| `data/worlds/*.dat` | Raw map blobs, only when `MORI_DUMP_WORLDS` is set |
 
 ### Client version (`data/version.json`)
 

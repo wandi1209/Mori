@@ -247,6 +247,33 @@ pub struct Bot {
 /// dead. The real handshake arrives in well under a second.
 const SERVER_HELLO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// Writes a world's raw map blob to `data/worlds/<name>.dat`, for inspecting the
+/// format by hand. Off unless `MORI_DUMP_WORLDS` is set: this used to overwrite a
+/// single `world.dat` in the working directory on every world entry, which meant
+/// several bots racing over one file, a disk write per warp, and — when Mori runs
+/// from a checkout — the repository's own parser sample being clobbered.
+fn dump_world_data(name: &str, raw: &[u8]) {
+    if std::env::var_os("MORI_DUMP_WORLDS").is_none() {
+        return;
+    }
+
+    let safe: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    let name = if safe.is_empty() { "unnamed" } else { &safe };
+
+    let dir = std::path::Path::new("data").join("worlds");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        println!("[Bot] could not create {}: {e}", dir.display());
+        return;
+    }
+    let path = dir.join(format!("{name}.dat"));
+    if let Err(e) = std::fs::write(&path, raw) {
+        println!("[Bot] could not write {}: {e}", path.display());
+    }
+}
+
 /// Fallback character speed in pixels per second, used until the server sends a
 /// SetCharacterState with the real one.
 const DEFAULT_WALK_SPEED: f32 = 250.0;
@@ -1415,11 +1442,14 @@ impl Bot {
                                     }
                                 }
                                 GamePacketType::SendMapData => {
-                                    let _ = std::fs::write("world.dat", &pkt.extra_data);
                                     self.players.clear();
                                     self.local = LocalPlayer::default();
                                     match World::parse(&pkt.extra_data) {
                                         Ok(world) => {
+                                            dump_world_data(
+                                                &world.tile_map.world_name,
+                                                &pkt.extra_data,
+                                            );
                                             self.log_console(format!(
                                                 "[Bot] World: {}x{} tiles, {} objects",
                                                 world.tile_map.width,
