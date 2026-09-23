@@ -97,6 +97,21 @@ feet and would otherwise be picked straight back up — warps home, and turns it
 on again there. It also refuses to drop unless it confirms it is actually in the
 storage world.
 
+### When nothing is ready
+
+A cycle that finds no ready trees still replants whatever plots are free, then
+waits `idle_recheck_s` (five minutes by default) instead of a full growth timer:
+
+```
+Dark Yellow Block cycle: nothing ready, 0 replanted
+sleeping 431s
+```
+
+Waiting the whole timer there would be wrong — a cycle that starts halfway
+through one would sit out almost two growth periods before catching up. The long
+wait is only used after an actual harvest, which is what puts the loop in step
+with the trees.
+
 ### Sizing the farm
 
 Every cycle ends with a line that answers whether the farm pays for itself:

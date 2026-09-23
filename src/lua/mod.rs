@@ -200,6 +200,30 @@ mod farm_script_tests {
     }
 
     #[test]
+    fn an_idle_cycle_waits_the_short_interval() {
+        // No ready trees: the stub's plots are all empty to start with.
+        // area excludes the stub's tiles, so nothing is ready and nothing is empty
+        let (lua, _) = run_script(&[
+            ("idle_recheck_s", "120"),
+            ("area", "{ x1 = 80, y1 = 50, x2 = 85, y2 = 55 }"),
+        ]);
+        let printed: Vec<String> = lua.load("return SIM.printed").eval().unwrap();
+
+        assert!(
+            printed.iter().any(|l| l.contains("nothing ready")),
+            "an empty farm should say so: {printed:?}"
+        );
+        let slept: u64 = printed
+            .iter()
+            .find_map(|l| l.strip_prefix("[farm] sleeping ")?.strip_suffix("s")?.parse().ok())
+            .expect("no sleep line");
+        assert!(
+            (120..=420).contains(&slept),
+            "should wait the idle interval plus jitter, waited {slept}s"
+        );
+    }
+
+    #[test]
     fn break_spot_keeps_the_bot_on_one_tile() {
         // x 14, y 24 is one of the stub's empty plots.
         let (_, log) = run_script(&[("break_spot", "{ x = 14, y = 24 }")]);

@@ -59,6 +59,9 @@ local CONFIG = {
   step_timeout_ms  = 8000,  -- giving up on a walk or a warp
   action_delay_ms  = 250,   -- pause after each punch or placement
   cycle_jitter_s   = { 30, 300 }, -- random tail added to every wait
+  idle_recheck_s   = 300,   -- wait before looking again when nothing was ready,
+                            -- so a cycle started mid-growth does not sit out a
+                            -- full timer for trees that are minutes away
 }
 
 -- ── helpers ────────────────────────────────────────────────────────────────
@@ -345,11 +348,18 @@ local function runCycle(crop)
   dumpSeeds(crop)
 
   local seeds_gained = seeds_after_break - seeds_before
-  local per_tree = harvested > 0 and (seeds_gained / harvested) or 0
+
+  if harvested == 0 then
+    log(string.format("%s cycle: nothing ready, %d replanted", crop.name, planted))
+    return false
+  end
+
+  local per_tree = seeds_gained / harvested
   log(string.format(
     "%s cycle: %d trees -> %d blocks -> %d seeds (%.2f seeds/tree), %d replanted%s",
     crop.name, harvested, broken_from, seeds_gained, per_tree, planted,
     per_tree >= 1 and " [sustains itself]" or " [losing seeds]"))
+  return true
 end
 
 -- ── main loop ──────────────────────────────────────────────────────────────
@@ -367,12 +377,14 @@ log(crop.name .. ": block " .. crop.block_id .. ", seed " .. crop.seed_id
 math.randomseed(crop.block_id + inv(crop.seed_id) + 1)
 
 while true do
-  runCycle(crop)
+  local harvested_something = runCycle(crop)
 
-  -- Wait out the growth timer, plus a random tail so cycles do not land on a
-  -- fixed grid every time.
+  -- A full growth timer only makes sense after a harvest. Finding nothing ready
+  -- means this cycle started somewhere in the middle of one, so look again
+  -- sooner rather than sitting out a whole timer for trees that are close.
+  local base = harvested_something and crop.grow or CONFIG.idle_recheck_s
   local jitter = math.random(CONFIG.cycle_jitter_s[1], CONFIG.cycle_jitter_s[2])
-  local wait = crop.grow + jitter
-  log("cycle done, sleeping " .. math.floor(wait) .. "s")
+  local wait = base + jitter
+  log("sleeping " .. math.floor(wait) .. "s")
   nap(wait * 1000)
 end
