@@ -102,11 +102,11 @@ storage world.
 
 The loop never sleeps out a growth timer. After a cycle it looks at the farm
 again: anything ripe and it goes straight into the next one, otherwise it waits
-`idle_recheck_s` (five minutes by default) and looks again.
+`idle_recheck_s` (a minute by default) and looks again.
 
 ```
 Dark Yellow Block cycle: nothing ready, 0 replanted
-nothing ripe, checking again in 431s
+nothing ripe, checking again in 191s
 ```
 
 A fixed growth-timer sleep would be wrong twice over. Trees planted at different

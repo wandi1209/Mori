@@ -64,11 +64,12 @@ local CONFIG = {
   -- after every one of them, with its own jitter, so this is on top of that —
   -- leave it at 0 and tune the delays in the bot's Config tab instead.
   action_delay_ms  = 0,
-  cycle_jitter_s   = { 30, 300 }, -- random tail added to every wait
-  idle_recheck_s   = 300,   -- how long to wait before looking again when nothing
-                            -- is ready. The loop never sleeps out a growth timer:
-                            -- trees planted at different moments ripen at
-                            -- different moments, so it polls instead
+  -- How long to wait before looking again when nothing is ready, plus a random
+  -- tail so the checks do not land on a fixed grid. The loop never sleeps out a
+  -- growth timer: trees planted at different moments ripen at different moments,
+  -- so it polls instead.
+  idle_recheck_s   = 60,
+  idle_jitter_s    = { 5, 30 },
 }
 
 -- ── helpers ────────────────────────────────────────────────────────────────
@@ -529,7 +530,7 @@ while true do
   if more_ready then
     log("more trees are ready, going again")
   else
-    local jitter = math.random(CONFIG.cycle_jitter_s[1], CONFIG.cycle_jitter_s[2])
+    local jitter = math.random(CONFIG.idle_jitter_s[1], CONFIG.idle_jitter_s[2])
     local wait = CONFIG.idle_recheck_s + jitter
     log("nothing ripe, checking again in " .. math.floor(wait) .. "s")
     nap(wait * 1000)

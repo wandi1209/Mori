@@ -214,6 +214,7 @@ mod farm_script_tests {
         // area excludes the stub's tiles, so nothing is ready and nothing is empty
         let (lua, _) = run_script(&[
             ("idle_recheck_s", "120"),
+            ("idle_jitter_s", "{ 5, 30 }"),
             ("area", "{ x1 = 80, y1 = 50, x2 = 85, y2 = 55 }"),
         ]);
         let printed: Vec<String> = lua.load("return SIM.printed").eval().unwrap();
@@ -232,8 +233,8 @@ mod farm_script_tests {
             })
             .expect("no wait line");
         assert!(
-            (120..=420).contains(&slept),
-            "should wait the idle interval plus jitter, waited {slept}s"
+            (125..=150).contains(&slept),
+            "should wait the idle interval plus its small jitter, waited {slept}s"
         );
     }
 
