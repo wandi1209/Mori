@@ -151,6 +151,22 @@ mod farm_script_tests {
     }
 
     #[test]
+    fn seeds_can_be_stored_in_the_farm_world() {
+        let (lua, log) = run_script(&[(r#"dump_world    = "YOURSTORE","#, r#"dump_world    = "","#)]);
+
+        assert!(
+            log.iter().any(|l| l.starts_with("drop:")),
+            "surplus seeds should still be dropped"
+        );
+        assert!(
+            !log.iter().any(|l| l == "warp:YOURSTORE"),
+            "no warp should happen when storing in the farm world"
+        );
+        let collect_on: bool = lua.load("return SIM.collect").eval().unwrap();
+        assert!(collect_on, "auto-collect should be back on after the drop");
+    }
+
+    #[test]
     fn row_step_skips_the_walkways() {
         // Six plots spread over rows 24 and 25; three hold trees, three are empty.
         let (_, every_row) = run_script(&[]);

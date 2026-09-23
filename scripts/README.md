@@ -49,20 +49,29 @@ The name must match `items.dat` exactly and its seed must be `<name> Seed`, whic
 holds for every tree-grown block. A wrong name stops the script at startup with a
 message rather than farming nothing silently.
 
-### The storage world
+### Storing the surplus
 
-Surplus seeds are dropped on the floor of `dump_world` once the bot holds
-`seed_dump_at` of them, keeping `seed_keep` back to replant with:
+Surplus seeds are dropped on the floor once the bot holds `seed_dump_at` of them,
+keeping `seed_keep` back to replant with. They can go to a separate world:
 
 ```lua
 dump_world    = "YOURSTORE",
+dump_world_id = "",          -- door id; empty for the main entrance
 seed_dump_at  = 50,
 seed_keep     = 10,
 ```
 
-Use a world the account owns and has locked. A drop is a pile on the ground that
-anyone standing there can pick up, so an unlocked world is a giveaway, not
-storage.
+or stay in the farm world, on a tile of your choosing:
+
+```lua
+dump_world = "",
+dump_spot  = { x = 5, y = 24 },
+```
+
+Keep `dump_spot` out of `area`, or the pile sits among the plots and the bot
+walks over it while farming. A drop is a pile on the ground that anyone standing
+there can pick up, so the world holding it wants to be one the account owns and
+has locked — an unlocked world is a giveaway, not storage.
 
 The script turns auto-collect off before dropping — the pile lands at the bot's
 feet and would otherwise be picked straight back up — warps home, and turns it

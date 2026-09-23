@@ -35,8 +35,12 @@ local CONFIG = {
   row_step   = 1,
   row_offset = 0,
 
-  dump_world    = "YOURSTORE",  -- where surplus seeds are dropped
+  -- Where surplus seeds go. Leave dump_world empty to keep them in the farm
+  -- world, dropped on dump_spot — a tile away from the plots, since the bot has
+  -- to stand clear of the pile for auto-collect not to pick it straight back up.
+  dump_world    = "YOURSTORE",
   dump_world_id = "",
+  dump_spot     = { x = 5, y = 24 },
   seed_dump_at  = 50,           -- surplus seeds that trigger a dump run
   seed_keep     = 10,           -- seeds kept back after a dump
 
@@ -246,24 +250,48 @@ local function plant(crop)
   return planted
 end
 
---- Drops surplus seeds in the storage world, keeping `seed_keep` back.
---- Auto-collect goes off first: a drop lands at the bot's feet, so with collect
---- enabled the bot picks its own pile straight back up. It comes back on once
---- the bot is home, well away from the pile.
+--- Drops surplus seeds, keeping `seed_keep` back.
+---
+--- Auto-collect goes off before the bot goes anywhere near the pile: a drop lands
+--- at its feet, and arriving at an old pile with collecting on would scoop the
+--- whole store back up. It comes back on once the bot has left the spot.
 local function dumpSeeds(crop)
   local held = inv(crop.seed_id)
   local surplus = held - CONFIG.seed_keep
   if held < CONFIG.seed_dump_at or surplus <= 0 then return end
 
-  log(crop.name .. " dump: " .. surplus .. " seeds to " .. CONFIG.dump_world)
-  if not goToWorld(CONFIG.dump_world, CONFIG.dump_world_id) then return end
-  -- Never drop into whatever world the bot happens to be standing in.
-  if not bot:isInWorld(CONFIG.dump_world) then
-    log("dump: not in " .. CONFIG.dump_world .. ", skipping")
+  local same_world = CONFIG.dump_world == nil or CONFIG.dump_world == ""
+  local where = same_world and "the storage spot" or CONFIG.dump_world
+  log(crop.name .. " dump: " .. surplus .. " seeds to " .. where)
+
+  bot:setAutoCollect(false)
+
+  if same_world then
+    local spot = CONFIG.dump_spot
+    if not spot or not goTo(spot.x, spot.y) then
+      log("dump: could not reach the storage spot")
+      bot:setAutoCollect(true)
+      return
+    end
+    bot:drop(crop.seed_id, surplus)
+    nap(2000)
+    -- Step off the pile before collecting resumes.
+    goTo(CONFIG.area.x1, CONFIG.area.y1)
+    bot:setAutoCollect(true)
     return
   end
 
-  bot:setAutoCollect(false)
+  if not goToWorld(CONFIG.dump_world, CONFIG.dump_world_id) then
+    bot:setAutoCollect(true)
+    return
+  end
+  -- Never drop into whatever world the bot happens to be standing in.
+  if not bot:isInWorld(CONFIG.dump_world) then
+    log("dump: not in " .. CONFIG.dump_world .. ", skipping")
+    bot:setAutoCollect(true)
+    return
+  end
+
   bot:drop(crop.seed_id, surplus)
   nap(2000)
 
