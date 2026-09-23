@@ -27,17 +27,23 @@ Growtopia answers an outdated client with `UPDATE REQUIRED` and nothing else, an
 the version moves every few weeks. It is read once at start-up and printed:
 
 ```
-[Version] game 5.57 protocol 225 fhash -716928004 (data/version.json)
+[Version] game 5.57 protocol 227 fhash -716928004 (data/version.json)
 ```
 
 ```json
-{ "game_version": "5.57", "protocol": 225, "fhash": -716928004 }
+{ "game_version": "5.57", "protocol": 227, "fhash": -716928004 }
 ```
 
 Any field may be left out to keep the compiled-in default. The file is optional —
 without it the defaults apply — so a version bump is an edit and a restart rather
-than a rebuild. The current client version is whatever the app stores list for
-Growtopia.
+than a rebuild.
+
+`protocol` is the value the servers check. The login dashboard answers an
+outdated one with `Please try login again.` and the game server with
+`UPDATE REQUIRED`, so finding the current number means trying the next one up
+until the dashboard returns a page. Measured on 2026-09-23: 227 is accepted, 226
+and 228 are not, while `game_version` and `fhash` are not checked at that stage —
+the client version the app stores list is still the honest value to send.
 
 ### Device identity (`data/devices.json`)
 

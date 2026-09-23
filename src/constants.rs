@@ -1,12 +1,14 @@
 //! Client version the bot presents to Growtopia.
 //!
 //! The game server rejects an outdated client with an `UPDATE REQUIRED` message,
-//! so these move every few weeks. They are read once at start-up from
+//! and the login dashboard answers one with `Please try login again.`, so these
+//! move every few weeks. `protocol` is the field both of them actually check;
+//! probing it is a matter of trying the next number up. They are read once at start-up from
 //! `data/version.json`, falling back to the values below, so a bump needs an edit
 //! and a restart rather than a rebuild:
 //!
 //! ```json
-//! { "game_version": "5.57", "protocol": 225, "fhash": -716928004 }
+//! { "game_version": "5.57", "protocol": 227, "fhash": -716928004 }
 //! ```
 
 use std::sync::OnceLock;
@@ -14,7 +16,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 const DEFAULT_GAME_VERSION: &str = "5.57";
-const DEFAULT_PROTOCOL: u32 = 225;
+const DEFAULT_PROTOCOL: u32 = 227;
 const DEFAULT_FHASH: i32 = -716928004;
 
 #[derive(Deserialize)]
