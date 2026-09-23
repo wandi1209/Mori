@@ -125,6 +125,38 @@ mod farm_script_tests {
         end
     "#;
 
+    /// Every `lua.load(r#"..."#)` block in the runtime is Lua source that has to
+    /// compile in the interpreter Mori actually embeds. One that does not takes
+    /// the whole prelude with it, and with it every script on every bot — which is
+    /// what a generic-for control variable assignment did under Lua 5.5, where
+    /// those variables are const.
+    #[test]
+    fn the_lua_prelude_compiles() {
+        let lua = mlua::Lua::new_with(
+            mlua::StdLib::TABLE | mlua::StdLib::STRING | mlua::StdLib::MATH | mlua::StdLib::IO,
+            mlua::LuaOptions::default(),
+        )
+        .expect("lua init failed");
+
+        let src = std::fs::read_to_string("src/lua/runtime.rs").expect("runtime.rs missing");
+        let mut checked = 0;
+        let mut rest = src.as_str();
+        while let Some(start) = rest.find("lua.load(r#\"") {
+            let body = &rest[start + "lua.load(r#\"".len()..];
+            let end = body.find("\"#").expect("unterminated lua.load block");
+            let chunk = &body[..end];
+
+            lua.load(chunk)
+                .set_name(format!("prelude block {}", checked + 1))
+                .into_function()
+                .unwrap_or_else(|e| panic!("prelude block {} does not compile: {e}", checked + 1));
+
+            checked += 1;
+            rest = &body[end..];
+        }
+        assert!(checked >= 2, "expected to find the prelude blocks, found {checked}");
+    }
+
     /// Overwrites one `key = value,` line of the script's CONFIG block. The block is
     /// meant to be edited for each farm, so tests set what they need rather than
     /// depending on the values the file happens to ship with.

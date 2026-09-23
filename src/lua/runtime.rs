@@ -1272,9 +1272,13 @@ do
             if name and pack_id then
                 local parsed_items = {}
                 if items and items ~= "" then
+                    -- Lua 5.5 makes a generic-for control variable const, so the
+                    -- trimmed value needs a local of its own. Assigning to `token`
+                    -- here failed to compile, and since this runs in the prelude it
+                    -- took every script down with it.
                     for token in items:gmatch("[^,]+") do
-                        token = token:match("^%s*(.-)%s*$")
-                        parsed_items[#parsed_items + 1] = tonumber(token) or token
+                        local trimmed = token:match("^%s*(.-)%s*$")
+                        parsed_items[#parsed_items + 1] = tonumber(trimmed) or trimmed
                     end
                 end
 
