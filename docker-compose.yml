@@ -2,11 +2,12 @@ services:
   mori:
     build: .
     # The image only EXPOSEs 3000; without this the dashboard is unreachable from
-    # the host. Bind to localhost and reach it over an SSH tunnel when the host is
-    # not on a trusted network: the dashboard speaks plain HTTP and is guarded by
-    # the master password alone.
+    # the host. The default binding is localhost-only, because the dashboard
+    # speaks plain HTTP and is guarded by the master password alone — reach it
+    # over an SSH tunnel from elsewhere. To open it to the network anyway, set
+    # MORI_BIND=0.0.0.0 in a .env file next to this one.
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${MORI_BIND:-127.0.0.1}:${MORI_PORT:-3000}:3000"
     volumes:
       # user.json, devices.json and version.json live here, so an account keeps
       # its device identity across container rebuilds.
