@@ -29,7 +29,7 @@ export interface LiveBot {
   inventory: InventoryItem[]
   inventory_slots: number
   console: string[]
-  delays: { place_ms: number; walk_ms: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }
+  delays: { place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }
   track_info: TrackInfo | null
   auto_collect: boolean
   collect_radius_tiles: number
@@ -46,7 +46,7 @@ export function makeBot(id: number, username: string): LiveBot {
     world_width: 100, world_height: 60,
     tiles: [], players: new Map(),
     objects: [], inventory: [], inventory_slots: 0, console: [],
-    delays: { place_ms: 500, walk_ms: 500, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
+    delays: { place_ms: 500, walk_ms: 500, jitter_pct: 25, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
     track_info: null,
     auto_collect: true,
     collect_radius_tiles: 3,
@@ -128,8 +128,8 @@ export function useMoriStore() {
       ['BotAutoCollect', (d: { bot_id: number; enabled: boolean }) =>
         setBots((m) => patchBot(m, d.bot_id, { auto_collect: d.enabled }))],
 
-      ['BotDelays', (d: { bot_id: number; place_ms: number; walk_ms: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }) =>
-        setBots((m) => patchBot(m, d.bot_id, { delays: { place_ms: d.place_ms, walk_ms: d.walk_ms, twofa_secs: d.twofa_secs, server_overload_secs: d.server_overload_secs, too_many_logins_secs: d.too_many_logins_secs, maintenance_secs: d.maintenance_secs } }))],
+      ['BotDelays', (d: { bot_id: number; place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }) =>
+        setBots((m) => patchBot(m, d.bot_id, { delays: { place_ms: d.place_ms, walk_ms: d.walk_ms, jitter_pct: d.jitter_pct, twofa_secs: d.twofa_secs, server_overload_secs: d.server_overload_secs, too_many_logins_secs: d.too_many_logins_secs, maintenance_secs: d.maintenance_secs } }))],
 
       ['BotTrackInfo', (d: { bot_id: number; level: number; grow_id: number; install_date: number; global_playtime: number; awesomeness: number }) =>
         setBots((m) => patchBot(m, d.bot_id, {

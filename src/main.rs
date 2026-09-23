@@ -8,6 +8,7 @@ pub mod events;
 mod bot_state;
 mod bot_manager;
 mod dashboard;
+mod device;
 pub mod items;
 mod login;
 mod lua;

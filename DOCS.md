@@ -214,6 +214,7 @@ Returns the full state of a bot.
   "delays": {
     "place_ms": 500,
     "walk_ms": 500,
+    "jitter_pct": 25,
     "twofa_secs": 120,
     "server_overload_secs": 30,
     "too_many_logins_secs": 5,
@@ -300,12 +301,13 @@ Permanently delete items.
 ```
 
 #### `set_delays`
-Configure action delays. `place_ms` and `walk_ms` are in milliseconds; the `*_secs` fields control how long the bot waits before reconnecting after each login failure type.
+Configure action delays. `place_ms` and `walk_ms` are in milliseconds; `jitter_pct` randomises those two by that percentage in each direction on every action (0 disables it, values above 90 are clamped); the `*_secs` fields control how long the bot waits before reconnecting after each login failure type. Retry delays are never jittered.
 ```json
 {
   "type": "set_delays",
   "place_ms": 500,
   "walk_ms": 500,
+  "jitter_pct": 25,
   "twofa_secs": 120,
   "server_overload_secs": 30,
   "too_many_logins_secs": 5,
@@ -856,7 +858,7 @@ Fired when the bot's auto-collect setting is changed — either via the HTTP API
 ```
 
 #### `BotDelays`
-Fired when any delay value is changed — via the HTTP `set_delays` command or via `bot.place_delay` / `bot.walk_delay` from a Lua script. Always carries the full delays object.
+Fired when any delay value is changed — via the HTTP `set_delays` command or via `bot.place_delay` / `bot.walk_delay` / `bot.jitter_pct` from a Lua script. Always carries the full delays object.
 ```json
 {
   "event": "BotDelays",
@@ -864,6 +866,7 @@ Fired when any delay value is changed — via the HTTP `set_delays` command or v
     "bot_id": 1,
     "place_ms": 500,
     "walk_ms": 500,
+    "jitter_pct": 25,
     "twofa_secs": 120,
     "server_overload_secs": 30,
     "too_many_logins_secs": 5,
@@ -899,6 +902,7 @@ All `x`/`y` values are in **tile coordinates** (pixels ÷ 32). The bot's positio
 |-------|---------|-------------|
 | `place_ms` | 500ms | Delay between place/punch actions |
 | `walk_ms` | 500ms | Delay between walk/pathfind steps |
+| `jitter_pct` | 25% | Random spread applied to `place_ms`/`walk_ms` per action (max 90) |
 | `twofa_secs` | 120s | Reconnect wait after 2FA block |
 | `server_overload_secs` | 30s | Reconnect wait after server overload |
 | `too_many_logins_secs` | 5s | Reconnect wait after too-many-logins rejection |

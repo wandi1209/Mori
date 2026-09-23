@@ -66,7 +66,7 @@ pub enum WsEvent {
     /// Bot auto-collect toggled.
     BotAutoCollect { bot_id: u32, enabled: bool },
     /// Bot delays updated.
-    BotDelays { bot_id: u32, place_ms: u64, walk_ms: u64, twofa_secs: u64, server_overload_secs: u64, too_many_logins_secs: u64, maintenance_secs: u64 },
+    BotDelays { bot_id: u32, place_ms: u64, walk_ms: u64, jitter_pct: u8, twofa_secs: u64, server_overload_secs: u64, too_many_logins_secs: u64, maintenance_secs: u64 },
 }
 
 pub type WsTx = tokio::sync::broadcast::Sender<WsEvent>;

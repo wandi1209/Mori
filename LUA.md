@@ -152,6 +152,7 @@ The main bot object returned by `getBot()`.
 | `reconnect_interval` | number | r/w | Delay in ms before reconnecting after disconnect (0 = immediate) |
 | `place_delay` | number | r/w | Delay between place/punch actions in milliseconds |
 | `walk_delay` | number | r/w | Delay between walk/pathfind steps in milliseconds |
+| `jitter_pct` | number | r/w | Randomises `place_delay`/`walk_delay` by +/- this percent on every action. Default 25, clamped to 90, 0 disables |
 
 #### Methods
 

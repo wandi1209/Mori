@@ -221,6 +221,13 @@ impl LuaUserData for BotProxy {
             p.request(Req::SetWalkDelay { ms: v });
             Ok(())
         });
+        fields.add_field_method_get("jitter_pct", |_, p| {
+            match p.request(Req::GetJitterPct) { Rep::U32(v) => Ok(v), _ => Ok(25) }
+        });
+        fields.add_field_method_set("jitter_pct", |_, p, v: u8| {
+            p.request(Req::SetJitterPct { pct: v });
+            Ok(())
+        });
     }
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {

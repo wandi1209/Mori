@@ -5,7 +5,10 @@ use crate::bot_state::{
 };
 use crate::constants::{FHASH, GAME_VER, PROTOCOL};
 use crate::cursor::Cursor;
-use crate::protocol::crypto::{compute_klv, generate_rid, hash_string, random_hex, random_mac};
+use rand::Rng;
+
+use crate::device;
+use crate::protocol::crypto::{compute_klv, hash_string};
 use crate::events::{WsEvent, WsInvItem, WsObject, WsTile, WsTx};
 use crate::inventory::Inventory;
 use crate::items::ItemsDat;
@@ -221,6 +224,18 @@ pub struct Bot {
     last_ping: u32,
 }
 
+/// Applies +/- `pct` percent of random jitter to `ms`. `pct` is clamped to 90 so a
+/// delay can never collapse to zero.
+fn jitter_ms(ms: u64, pct: u8) -> u64 {
+    let pct = pct.min(90) as i64;
+    let span = (ms as i64).saturating_mul(pct) / 100;
+    if span == 0 {
+        return ms;
+    }
+    let offset = rand::rng().random_range(-span..=span);
+    (ms as i64 + offset).max(0) as u64
+}
+
 fn sorted_blacklist_vec(set: &HashSet<u16>) -> Vec<u16> {
     let mut v: Vec<u16> = set.iter().copied().collect();
     v.sort_unstable();
@@ -257,13 +272,21 @@ impl Bot {
                 });
             }
         };
-        let creds = fetch_credentials(username, password, proxy.as_ref(), &mut log_fn);
-
-        let mac = random_mac();
+        // Reuse this account's stored device identity so repeated logins do not
+        // look like a new machine every time.
+        let identity = device::load_or_create(username);
+        log_fn(format!(
+            "[Bot] device identity: mac={} rid={}...",
+            identity.mac,
+            &identity.rid[..8]
+        ));
+        let mac = identity.mac.clone();
         let hash = hash_string(&format!("{}RT", mac));
-        let hash2 = hash_string(&format!("{}RT", random_hex(16)));
-        let wk = random_hex(32);
-        let rid = generate_rid();
+        let hash2 = hash_string(&format!("{}RT", identity.hash2_seed));
+        let wk = identity.wk.clone();
+        let rid = identity.rid.clone();
+
+        let creds = fetch_credentials(username, password, proxy.as_ref(), &mut log_fn);
 
         let host = Self::create_host(proxy.as_ref());
         let mut bot = Bot {
@@ -363,8 +386,11 @@ impl Bot {
         let (ltoken, rid, mac, wk) = Self::parse_ltoken_string(ltoken_str)
             .expect("[Bot] Invalid ltoken string — expected token|rid|mac|wk");
 
+        // rid/mac/wk come from the token itself; only hash2's seed needs storing so
+        // it stays the same across reconnects of the same identity.
+        let identity = device::load_or_create_with(&rid, &rid, &mac, &wk);
         let hash = hash_string(&format!("{}RT", mac));
-        let hash2 = hash_string(&format!("{}RT", random_hex(16)));
+        let hash2 = hash_string(&format!("{}RT", identity.hash2_seed));
 
         let proxy_url = proxy.as_ref().map(|p| p.to_url());
         let proxy_url_ref = proxy_url.as_deref();
@@ -744,6 +770,14 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
+    }
+
+    /// Sleep for `ms` milliseconds, randomised by `delays.jitter_pct`, while keeping
+    /// ENet alive. Used for the delays between player-visible actions; protocol
+    /// timeouts and reconnect backoffs keep their exact values.
+    pub fn sleep_jittered(&mut self, ms: u64) {
+        let ms = jitter_ms(ms, self.delays.jitter_pct);
+        self.sleep_ms(ms);
     }
 
     /// Sleep for `ms` milliseconds while keeping ENet alive.
@@ -2080,7 +2114,7 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
         };
 
         self.send_game_packet(&pkt, false);
-        self.sleep_ms(self.delays.walk_ms);
+        self.sleep_jittered(self.delays.walk_ms);
     }
 
     pub fn place(&mut self, offset_x: i32, offset_y: i32, item_id: u32, is_punch: bool) {
@@ -2119,7 +2153,7 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
         pkt.packet_type = GamePacketType::State;
         pkt.flags = flags;
         self.send_game_packet(&pkt, true);
-        self.sleep_ms(self.delays.place_ms);
+        self.sleep_jittered(self.delays.place_ms);
 
         if !is_punch && item_id != 18 && item_id != 32 {
             self.inventory.sub_item(item_id as u16, 1);
@@ -2287,7 +2321,7 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
                     };
 
                     self.send_game_packet(&pkt, true);
-                    self.sleep_ms(delay);
+                    self.sleep_jittered(delay);
                     sent += 1;
                 }
             }
@@ -2592,6 +2626,7 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
                     bot_id: self.bot_id,
                     place_ms: self.delays.place_ms,
                     walk_ms: self.delays.walk_ms,
+                    jitter_pct: self.delays.jitter_pct,
                     twofa_secs: self.delays.twofa_secs,
                     server_overload_secs: self.delays.server_overload_secs,
                     too_many_logins_secs: self.delays.too_many_logins_secs,
@@ -2606,6 +2641,23 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
                     bot_id: self.bot_id,
                     place_ms: self.delays.place_ms,
                     walk_ms: self.delays.walk_ms,
+                    jitter_pct: self.delays.jitter_pct,
+                    twofa_secs: self.delays.twofa_secs,
+                    server_overload_secs: self.delays.server_overload_secs,
+                    too_many_logins_secs: self.delays.too_many_logins_secs,
+                    maintenance_secs: self.delays.maintenance_secs,
+                });
+                Rep::Ack
+            }
+            Req::SetJitterPct { pct } => {
+                let pct = pct.min(90);
+                self.delays.jitter_pct = pct;
+                self.state.write().unwrap().delays.jitter_pct = pct;
+                self.emit(WsEvent::BotDelays {
+                    bot_id: self.bot_id,
+                    place_ms: self.delays.place_ms,
+                    walk_ms: self.delays.walk_ms,
+                    jitter_pct: self.delays.jitter_pct,
                     twofa_secs: self.delays.twofa_secs,
                     server_overload_secs: self.delays.server_overload_secs,
                     too_many_logins_secs: self.delays.too_many_logins_secs,
@@ -2615,6 +2667,7 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
             }
             Req::GetPlaceDelay => Rep::U32(self.delays.place_ms as u32),
             Req::GetWalkDelay => Rep::U32(self.delays.walk_ms as u32),
+            Req::GetJitterPct => Rep::U32(self.delays.jitter_pct as u32),
         }
     }
 
@@ -2733,13 +2786,15 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
             BotCommand::FindPath { x, y } => {
                 self.find_path(x, y);
             }
-            BotCommand::SetDelays(d) => {
+            BotCommand::SetDelays(mut d) => {
+                d.jitter_pct = d.jitter_pct.min(90);
                 self.delays = d.clone();
                 self.state.write().unwrap().delays = d.clone();
                 self.emit(WsEvent::BotDelays {
                     bot_id: self.bot_id,
                     place_ms: d.place_ms,
                     walk_ms: d.walk_ms,
+                    jitter_pct: d.jitter_pct,
                     twofa_secs: d.twofa_secs,
                     server_overload_secs: d.server_overload_secs,
                     too_many_logins_secs: d.too_many_logins_secs,
@@ -2993,5 +3048,37 @@ rid|{}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|jp\nhash|{}\nmac|{}\nwk|{}\nz
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::jitter_ms;
+
+    #[test]
+    fn jitter_stays_within_the_requested_band() {
+        for _ in 0..1000 {
+            let v = jitter_ms(500, 25);
+            assert!((375..=625).contains(&v), "out of band: {v}");
+        }
+    }
+
+    #[test]
+    fn zero_percent_leaves_the_delay_untouched() {
+        assert_eq!(jitter_ms(500, 0), 500);
+    }
+
+    #[test]
+    fn percent_above_the_cap_is_clamped() {
+        for _ in 0..1000 {
+            let v = jitter_ms(1000, 255);
+            assert!((100..=1900).contains(&v), "out of band: {v}");
+        }
+    }
+
+    #[test]
+    fn short_delays_survive_rounding() {
+        assert_eq!(jitter_ms(0, 25), 0);
+        assert_eq!(jitter_ms(3, 25), 3); // span rounds to 0 -> unchanged
     }
 }

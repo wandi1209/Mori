@@ -115,6 +115,7 @@ export interface BotState {
   delays: {
     place_ms: number;
     walk_ms: number;
+    jitter_pct: number;
     twofa_secs: number;
     server_overload_secs: number;
     too_many_logins_secs: number;
@@ -163,6 +164,7 @@ export type BotCmd =
     type: "set_delays";
     place_ms: number;
     walk_ms: number;
+    jitter_pct: number;
     twofa_secs: number;
     server_overload_secs: number;
     too_many_logins_secs: number;

@@ -90,10 +90,18 @@ pub struct TrackInfo {
 pub struct BotDelays {
     pub place_ms:             u64,
     pub walk_ms:              u64,
+    /// Random jitter applied to `place_ms`/`walk_ms`, in percent (0-90).
+    /// Constant delays are trivially recognisable as automation.
+    #[serde(default = "default_jitter_pct")]
+    pub jitter_pct:           u8,
     pub twofa_secs:           u64,
     pub server_overload_secs: u64,
     pub too_many_logins_secs: u64,
     pub maintenance_secs:     u64,
+}
+
+fn default_jitter_pct() -> u8 {
+    25
 }
 
 impl Default for BotDelays {
@@ -101,6 +109,7 @@ impl Default for BotDelays {
         Self {
             place_ms:             500,
             walk_ms:              500,
+            jitter_pct:           default_jitter_pct(),
             twofa_secs:           120,
             server_overload_secs: 30,
             too_many_logins_secs: 5,

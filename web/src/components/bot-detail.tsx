@@ -617,6 +617,7 @@ function ConfigTab({
   delays: {
     place_ms: number;
     walk_ms: number;
+    jitter_pct: number;
     twofa_secs: number;
     server_overload_secs: number;
     too_many_logins_secs: number;
@@ -627,6 +628,7 @@ function ConfigTab({
 }) {
   const [placeMs, setPlaceMs] = useState(String(delays.place_ms));
   const [walkMs, setWalkMs] = useState(String(delays.walk_ms));
+  const [jitterPct, setJitterPct] = useState(String(delays.jitter_pct));
   const [twofaSecs, setTwofaSecs] = useState(String(delays.twofa_secs));
   const [serverOverloadSecs, setServerOverloadSecs] = useState(
     String(delays.server_overload_secs),
@@ -644,6 +646,7 @@ function ConfigTab({
   useEffect(() => {
     setPlaceMs(String(delays.place_ms));
     setWalkMs(String(delays.walk_ms));
+    setJitterPct(String(delays.jitter_pct));
     setTwofaSecs(String(delays.twofa_secs));
     setServerOverloadSecs(String(delays.server_overload_secs));
     setTooManyLoginsSecs(String(delays.too_many_logins_secs));
@@ -651,6 +654,7 @@ function ConfigTab({
   }, [
     delays.place_ms,
     delays.walk_ms,
+    delays.jitter_pct,
     delays.twofa_secs,
     delays.server_overload_secs,
     delays.too_many_logins_secs,
@@ -661,6 +665,7 @@ function ConfigTab({
     const newDelays = {
       place_ms: parseInt(placeMs, 10),
       walk_ms: parseInt(walkMs, 10),
+      jitter_pct: Math.min(90, Math.max(0, parseInt(jitterPct, 10) || 0)),
       twofa_secs: parseInt(twofaSecs, 10),
       server_overload_secs: parseInt(serverOverloadSecs, 10),
       too_many_logins_secs: parseInt(tooManyLoginsSecs, 10),
@@ -711,6 +716,21 @@ function ConfigTab({
             onChange={(e) => setWalkMs(e.target.value)}
             className="h-7 text-xs"
           />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Jitter (%)</span>
+          <Input
+            type="number"
+            min={0}
+            max={90}
+            step={5}
+            value={jitterPct}
+            onChange={(e) => setJitterPct(e.target.value)}
+            className="h-7 text-xs"
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Randomises place and walk delays by this much in each direction.
+          </span>
         </label>
       </div>
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

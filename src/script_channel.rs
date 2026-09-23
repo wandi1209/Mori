@@ -85,6 +85,7 @@ pub enum ScriptRequest {
     GetReconnectInterval,
     SetPlaceDelay { ms: u64 },
     SetWalkDelay { ms: u64 },
+    SetJitterPct { pct: u8 },
 
     // Queries — bot replies with data
     GetWorld,
@@ -98,6 +99,7 @@ pub enum ScriptRequest {
     GetGems,
     GetPlaceDelay,
     GetWalkDelay,
+    GetJitterPct,
 
 
 }
