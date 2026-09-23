@@ -224,6 +224,9 @@ local function plant(crop)
 end
 
 --- Drops surplus seeds in the storage world, keeping `seed_keep` back.
+--- Auto-collect goes off first: a drop lands at the bot's feet, so with collect
+--- enabled the bot picks its own pile straight back up. It comes back on once
+--- the bot is home, well away from the pile.
 local function dumpSeeds(crop)
   local held = inv(crop.seed_id)
   local surplus = held - CONFIG.seed_keep
@@ -231,18 +234,29 @@ local function dumpSeeds(crop)
 
   log(crop.name .. " dump: " .. surplus .. " seeds to " .. CONFIG.dump_world)
   if not goToWorld(CONFIG.dump_world, CONFIG.dump_world_id) then return end
+  -- Never drop into whatever world the bot happens to be standing in.
+  if not bot:isInWorld(CONFIG.dump_world) then
+    log("dump: not in " .. CONFIG.dump_world .. ", skipping")
+    return
+  end
 
+  bot:setAutoCollect(false)
   bot:drop(crop.seed_id, surplus)
   nap(2000)
+
+  -- Head home so the growth wait is spent in the farm, not on top of the pile.
+  if goToWorld(CONFIG.world, CONFIG.world_id) then
+    bot:setAutoCollect(true)
+  end
 end
 
 local function runCycle(crop)
   if not goToWorld(CONFIG.world, CONFIG.world_id) then return end
+  bot:setAutoCollect(true)
   harvest(crop)
   breakBlocks(crop)
   plant(crop)
   dumpSeeds(crop)
-  -- dumpSeeds may have left the bot in the storage world; the next cycle warps back.
 end
 
 -- ── main loop ──────────────────────────────────────────────────────────────
@@ -258,7 +272,6 @@ log(crop.name .. ": block " .. crop.block_id .. ", seed " .. crop.seed_id
   .. ", grows in " .. crop.grow .. "s, " .. crop.hits .. " hits to break")
 
 math.randomseed(crop.block_id + inv(crop.seed_id) + 1)
-bot:setAutoCollect(true)
 
 while true do
   runCycle(crop)

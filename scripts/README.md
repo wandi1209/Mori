@@ -31,6 +31,26 @@ The name must match `items.dat` exactly and its seed must be `<name> Seed`, whic
 holds for every tree-grown block. A wrong name stops the script at startup with a
 message rather than farming nothing silently.
 
+### The storage world
+
+Surplus seeds are dropped on the floor of `dump_world` once the bot holds
+`seed_dump_at` of them, keeping `seed_keep` back to replant with:
+
+```lua
+dump_world    = "YOURSTORE",
+seed_dump_at  = 50,
+seed_keep     = 10,
+```
+
+Use a world the account owns and has locked. A drop is a pile on the ground that
+anyone standing there can pick up, so an unlocked world is a giveaway, not
+storage.
+
+The script turns auto-collect off before dropping — the pile lands at the bot's
+feet and would otherwise be picked straight back up — warps home, and turns it
+on again there. It also refuses to drop unless it confirms it is actually in the
+storage world.
+
 `cargo test farm_script_completes_a_cycle` runs the script against a stub world —
 six plots, three ready trees — and checks that a full harvest, break, plant and
 dump cycle happens.

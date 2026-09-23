@@ -89,7 +89,7 @@ mod farm_script_tests {
         function bot:isInWorld(n) return S.world == n end
         function bot:isInTile() return true end
         function bot:findPath() end
-        function bot:setAutoCollect() end
+        function bot:setAutoCollect(on) S.collect = on end
         function bot:stopScript() error("STOPSCRIPT") end
         function bot:warp(n) S.world = n; S.log[#S.log+1] = "warp:" .. n end
         function bot:drop(id, n) S.seeds = S.seeds - n; S.log[#S.log+1] = "drop:" .. n end
@@ -151,5 +151,13 @@ mod farm_script_tests {
             log.iter().any(|l| l.starts_with("drop:")),
             "surplus seeds should be dropped in the storage world"
         );
+
+        // The drop lands at the bot's feet, so collecting must be off while it
+        // happens and back on once the bot is home.
+        let dropped_at = log.iter().position(|l| l.starts_with("drop:")).unwrap();
+        let home_after_drop = log[dropped_at..].iter().any(|l| l == "warp:SIMWORLD");
+        assert!(home_after_drop, "bot should return to the farm after dumping");
+        let collect_on: bool = lua.load("return SIM.collect").eval().unwrap();
+        assert!(collect_on, "auto-collect should be back on in the farm world");
     }
 }
