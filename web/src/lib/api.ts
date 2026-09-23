@@ -22,7 +22,14 @@ async function req<T>(
     throw new Error("Unauthorized");
   }
   if (res.status === 204) return undefined as T;
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
+  if (!res.ok) {
+    // Handlers answer with a plain-text reason; losing it leaves the UI saying
+    // only that something failed.
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      detail.trim() || `${method} ${path} → ${res.status}`,
+    );
+  }
   return res.json() as Promise<T>;
 }
 async function external_req<T>(

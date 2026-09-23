@@ -241,6 +241,7 @@ async fn google_login_url(
     let account = req.account.trim().to_string();
 
     let links = tokio::task::spawn_blocking(move || {
+        println!("[Google] fetching sign-in link for {account}");
         let device = crate::device::load_or_create(&account);
         let login_info = crate::server_data::LoginInfo {
             protocol: crate::constants::PROTOCOL,
@@ -265,14 +266,19 @@ async fn google_login_url(
     })
     .await
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "task failed".to_string()))?
+    .inspect_err(|e| println!("[Google] {e}"))
     .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
 
     match links.google {
-        Some(url) => Ok(Json(GoogleUrlResponse { url })),
-        None => Err((
-            StatusCode::BAD_GATEWAY,
-            "dashboard did not offer a Google option".into(),
-        )),
+        Some(url) => {
+            println!("[Google] sign-in link ready");
+            Ok(Json(GoogleUrlResponse { url }))
+        }
+        None => {
+            let reason = "dashboard did not offer a Google option";
+            println!("[Google] {reason}");
+            Err((StatusCode::BAD_GATEWAY, reason.into()))
+        }
     }
 }
 

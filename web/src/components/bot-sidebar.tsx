@@ -119,8 +119,8 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
         await api.spawnGoogleBot(body)
       }
       onDone()
-    } catch {
-      setError('Failed to spawn bot')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to spawn bot')
     } finally {
       setLoading(false)
     }
@@ -174,8 +174,8 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
                 const res = await api.googleLoginUrl(body)
                 setGoogleUrl(res.url)
                 window.open(res.url, '_blank', 'noopener')
-              } catch {
-                setError('Could not fetch the Google sign-in link')
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Could not fetch the Google sign-in link')
               } finally {
                 setLoading(false)
               }
