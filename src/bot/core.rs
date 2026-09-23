@@ -2544,9 +2544,15 @@ impl Bot {
                     continue;
                 }
 
-                // TODO: Optimize this.
-                //  I think the impact is tolerable
-                if self.compute_path(nx, ny).is_none() {
+                // The path was planned against the world as it was; a tile may have
+                // been placed or locked since. Checking that one step is still
+                // passable is enough — a full search per node re-derived the whole
+                // route for every tile walked.
+                let direction = (
+                    (nx as i32 - cx as i32).signum(),
+                    (ny as i32 - cy as i32).signum(),
+                );
+                if !self.is_tile_passable(nx, ny, direction) {
                     self.pathfind_recalc = true;
                     break;
                 }
