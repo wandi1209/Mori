@@ -13,6 +13,11 @@ All endpoints return `application/json`.
 Most endpoints are protected by authentication except for the frontend static files and `/auth/*` endpoints. Protected API endpoints require an `Authorization: Bearer <token>` header.
 The application is meant for a single user. Credentials are saved locally to `user.json`.
 
+Under Docker, `data/` is a named volume, so identities and the version file
+survive a rebuild. The compose file publishes the dashboard on `127.0.0.1:3000`
+only; change that binding deliberately, since the dashboard is plain HTTP with a
+single password in front of it.
+
 Two files hold local state, both under `data/` relative to the working directory:
 
 | File | Contents |

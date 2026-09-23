@@ -1,8 +1,17 @@
 services:
   mori:
     build: .
+    # The image only EXPOSEs 3000; without this the dashboard is unreachable from
+    # the host. Bind to localhost and reach it over an SSH tunnel when the host is
+    # not on a trusted network: the dashboard speaks plain HTTP and is guarded by
+    # the master password alone.
+    ports:
+      - "127.0.0.1:3000:3000"
     volumes:
+      # user.json, devices.json and version.json live here, so an account keeps
+      # its device identity across container rebuilds.
       - mori-data:/app/data
+    restart: unless-stopped
 
 volumes:
   mori-data:
