@@ -278,10 +278,21 @@ fn dump_world_data(name: &str, raw: &[u8]) {
 /// SetCharacterState with the real one.
 const DEFAULT_WALK_SPEED: f32 = 250.0;
 
-/// How many State packets one tile of movement is split into. A client streams a
-/// packet per rendered frame; sending a single packet per tile puts the character
-/// on exact tile centres with zero velocity, which no real movement ever produces.
-const WALK_STEPS: u32 = 3;
+/// Target gap between the position packets a walk is made of. A client sends one
+/// per rendered frame; something in this range looks like movement rather than a
+/// series of hops, without flooding the server.
+const WALK_PACKET_INTERVAL_MS: u64 = 60;
+
+/// Bounds on how many packets one tile is split into, whatever the delay works
+/// out to: enough that a fast walk still moves rather than teleports, few enough
+/// that a slow one does not turn into a packet storm.
+const WALK_STEPS_MIN: u32 = 3;
+const WALK_STEPS_MAX: u32 = 16;
+
+/// Number of packets to split a tile into, given how long the step may take.
+fn walk_step_count(total_ms: u64) -> u32 {
+    ((total_ms / WALK_PACKET_INTERVAL_MS) as u32).clamp(WALK_STEPS_MIN, WALK_STEPS_MAX)
+}
 
 /// Interpolates `steps` positions from `start` towards `target`, the last one
 /// exactly on `target`. A zero-length move still yields the target once.
@@ -2536,9 +2547,17 @@ impl Bot {
         let vel_x = axis_velocity(target_x - start_x, speed);
         let vel_y = axis_velocity(target_y - start_y, speed);
 
-        let steps = walk_steps((start_x, start_y), (target_x, target_y), WALK_STEPS);
+        // The jitter applies to the walk as a whole; spacing the packets evenly
+        // inside it keeps the motion steady, the way a client's frames are, while
+        // the time a tile takes still varies.
+        let total_ms = jitter_ms(self.delays.walk_ms, self.delays.jitter_pct);
+        let steps = walk_steps(
+            (start_x, start_y),
+            (target_x, target_y),
+            walk_step_count(total_ms),
+        );
         let step_count = steps.len();
-        let step_delay = self.delays.walk_ms / step_count.max(1) as u64;
+        let step_delay = total_ms / step_count.max(1) as u64;
 
         for (i, (x, y)) in steps.into_iter().enumerate() {
             let last = i + 1 == step_count;
@@ -2563,7 +2582,7 @@ impl Bot {
             };
 
             self.send_game_packet(&pkt, false);
-            self.sleep_jittered(step_delay);
+            self.sleep_ms(step_delay);
         }
 
         {
@@ -3575,8 +3594,8 @@ impl Bot {
 #[cfg(test)]
 mod tests {
     use super::{
-        axis_velocity, build_client_data, jitter_ms, minutes_until_window, walk_steps,
-        within_window, DEFAULT_WALK_SPEED,
+        axis_velocity, build_client_data, jitter_ms, minutes_until_window, walk_step_count,
+        walk_steps, within_window, DEFAULT_WALK_SPEED, WALK_STEPS_MAX, WALK_STEPS_MIN,
     };
     use crate::device::DeviceIdentity;
 
@@ -3585,6 +3604,16 @@ mod tests {
             .lines()
             .find_map(|l| l.strip_prefix(&format!("{key}|")))
             .unwrap_or_else(|| panic!("{key} missing from payload"))
+    }
+
+    #[test]
+    fn a_slower_walk_is_split_into_more_packets() {
+        // Roughly one packet per 60ms of the step, so the motion stays as smooth
+        // at 500ms per tile as it is at 150ms.
+        assert_eq!(walk_step_count(500), 8);
+        assert_eq!(walk_step_count(150), WALK_STEPS_MIN.max(2));
+        assert_eq!(walk_step_count(60), WALK_STEPS_MIN, "a fast walk still moves");
+        assert_eq!(walk_step_count(5_000), WALK_STEPS_MAX, "and a slow one is capped");
     }
 
     #[test]

@@ -1116,7 +1116,7 @@ All `x`/`y` values are in **tile coordinates** (pixels ÷ 32). The bot's positio
 | Delay | Default | Description |
 |-------|---------|-------------|
 | `place_ms` | 500ms | Delay between place/punch actions |
-| `walk_ms` | 500ms | Delay between walk/pathfind steps |
+| `walk_ms` | 500ms | Time one tile of walking takes, spread over several position packets |
 | `jitter_pct` | 25% | Random spread applied to `place_ms`/`walk_ms` per action (max 90) |
 | `twofa_secs` | 120s | Reconnect wait after 2FA block |
 | `server_overload_secs` | 30s | Reconnect wait after server overload |
