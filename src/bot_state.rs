@@ -188,6 +188,10 @@ pub struct BotState {
     pub delays: BotDelays,
     /// When this bot is allowed to be online.
     pub active_hours: ActiveHours,
+    /// Whether a Lua script is running on this bot right now. Tracked from the
+    /// script thread's channel, so it turns itself off when a script ends or
+    /// crashes rather than staying on until someone presses Stop.
+    pub script_running: bool,
     pub track_info: Option<TrackInfo>,
     /// Whether the run loop should auto-collect nearby dropped items.
     pub auto_collect: bool,
@@ -237,6 +241,7 @@ impl Default for BotState {
             ping_ms: 0,
             delays: BotDelays::default(),
             active_hours: ActiveHours::default(),
+            script_running: false,
             track_info: None,
             auto_collect: true,
             collect_radius_tiles: 1,

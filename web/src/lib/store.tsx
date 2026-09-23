@@ -30,6 +30,7 @@ export interface LiveBot {
   inventory_slots: number
   console: string[]
   status_detail: string | null
+  script_running: boolean
   active_hours: { enabled: boolean; start_minute: number; end_minute: number; session_minutes: number; break_minutes: number; jitter_pct: number }
   delays: { place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }
   track_info: TrackInfo | null
@@ -49,6 +50,7 @@ export function makeBot(id: number, username: string): LiveBot {
     tiles: [], players: new Map(),
     objects: [], inventory: [], inventory_slots: 0, console: [],
     status_detail: null,
+    script_running: false,
     active_hours: { enabled: false, start_minute: 480, end_minute: 1380, session_minutes: 90, break_minutes: 20, jitter_pct: 30 },
     delays: { place_ms: 500, walk_ms: 500, jitter_pct: 25, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
     track_info: null,
@@ -131,6 +133,9 @@ export function useMoriStore() {
 
       ['BotAutoCollect', (d: { bot_id: number; enabled: boolean }) =>
         setBots((m) => patchBot(m, d.bot_id, { auto_collect: d.enabled }))],
+
+      ['BotScript', (d: { bot_id: number; running: boolean }) =>
+        setBots((m) => patchBot(m, d.bot_id, { script_running: d.running }))],
 
       ['BotActiveHours', (d: { bot_id: number; enabled: boolean; start_minute: number; end_minute: number; session_minutes: number; break_minutes: number; jitter_pct: number }) =>
         setBots((m) => patchBot(m, d.bot_id, { active_hours: { enabled: d.enabled, start_minute: d.start_minute, end_minute: d.end_minute, session_minutes: d.session_minutes, break_minutes: d.break_minutes, jitter_pct: d.jitter_pct } }))],

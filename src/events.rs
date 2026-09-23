@@ -65,6 +65,8 @@ pub enum WsEvent {
     BotUsername { bot_id: u32, username: String },
     /// Bot auto-collect toggled.
     BotAutoCollect { bot_id: u32, enabled: bool },
+    /// A Lua script started or stopped on a bot.
+    BotScript { bot_id: u32, running: bool },
     /// Active-hours schedule changed.
     BotActiveHours { bot_id: u32, enabled: bool, start_minute: u16, end_minute: u16, session_minutes: u32, break_minutes: u32, jitter_pct: u8 },
     /// Bot delays updated.

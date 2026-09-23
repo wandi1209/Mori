@@ -330,6 +330,7 @@ Returns the full state of a bot.
 {
   "status": "in_game",
   "status_detail": null,
+  "script_running": false,
   "active_hours": {
     "enabled": false,
     "start_minute": 480,
@@ -1075,6 +1076,15 @@ Fired when any delay value is changed — via the HTTP `set_delays` command or v
 ---
 
 ## Reference
+
+#### `BotScript`
+Fired when a Lua script starts or stops on a bot. Unlike the Run and Stop buttons,
+this follows the script thread itself, so a script that ends or crashes reports it.
+```json
+{ "event": "BotScript", "data": { "bot_id": 1, "running": true } }
+```
+
+---
 
 ### BotStatus Values
 

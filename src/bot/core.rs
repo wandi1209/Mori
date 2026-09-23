@@ -3138,6 +3138,25 @@ impl Bot {
         }
     }
 
+    /// Records whether a script is running, for the web layer.
+    fn set_script_running(&mut self, running: bool) {
+        {
+            let mut s = self.state.write().unwrap();
+            if s.script_running == running {
+                return;
+            }
+            s.script_running = running;
+        }
+        self.log_console(format!(
+            "[Bot] script {}",
+            if running { "started" } else { "finished" }
+        ));
+        self.emit(WsEvent::BotScript {
+            bot_id: self.bot_id,
+            running,
+        });
+    }
+
     /// Drain all pending requests from the script thread, handling each one.
     /// Detects when the script thread exits (channel closed) and clears channel fields.
     fn drain_script_requests(&mut self) {
@@ -3150,6 +3169,7 @@ impl Bot {
                         self.script_req_rx = None;
                         self.script_reply_tx = None;
                         self.event_tx = None;
+                        self.set_script_running(false);
                         break;
                     }
                 },
@@ -3174,6 +3194,7 @@ impl Bot {
                 self.find_path(x, y);
             }
             BotCommand::RunScript { content } => {
+                self.set_script_running(true);
                 // Stop any currently running script first.
                 self.script_stop.store(true, Ordering::Relaxed);
                 // Drop old channels so the previous script thread (if any) sees disconnection.

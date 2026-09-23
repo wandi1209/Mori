@@ -114,6 +114,7 @@ export interface ActiveHours {
 export interface BotState {
   status: BotStatus;
   status_detail: string | null;
+  script_running: boolean;
   world_name: string;
   pos_x: number;
   pos_y: number;

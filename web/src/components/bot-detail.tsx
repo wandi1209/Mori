@@ -70,6 +70,7 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
           ...existing,
           status: s.status,
           status_detail: s.status_detail,
+          script_running: s.script_running,
           world_name: s.world_name,
           pos_x: s.pos_x,
           pos_y: s.pos_y,
@@ -195,7 +196,7 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
           value="script"
           className="flex-1 overflow-hidden m-0 p-4 flex flex-col gap-3"
         >
-          <ScriptTab botId={bot.id} />
+          <ScriptTab botId={bot.id} running={bot.script_running} />
         </TabsContent>
 
         <TabsContent value="config" className="flex-1 overflow-auto m-0 p-4">
@@ -561,7 +562,7 @@ function ConsoleTab({ lines }: { lines: string[] }) {
 
 // ── Script tab ──────────────────────────────────────────────────────────────
 
-function ScriptTab({ botId }: { botId: number }) {
+function ScriptTab({ botId, running }: { botId: number; running: boolean }) {
   const [script, setScript] = useState("");
   const [status, setStatus] = useState("");
 
@@ -574,7 +575,7 @@ function ScriptTab({ botId }: { botId: number }) {
     try {
       await api.sendCmd(botId, { type: "run_script", content: script });
       localStorage.setItem(`bot_script_${botId}`, script);
-      setStatus("Running…");
+      setStatus("");
     } catch {
       setStatus("Error");
     }
@@ -583,7 +584,7 @@ function ScriptTab({ botId }: { botId: number }) {
   async function stop() {
     try {
       await api.sendCmd(botId, { type: "stop_script" });
-      setStatus("Stopped");
+      setStatus("");
     } catch {
       setStatus("Error");
     }
@@ -610,6 +611,17 @@ function ScriptTab({ botId }: { botId: number }) {
         >
           Stop
         </Button>
+        {/* Reported by the bot, not by the button that was last pressed: a
+            script that ends or crashes on its own turns this off. */}
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "w-2 h-2 rounded-full",
+              running ? "bg-emerald-500" : "bg-muted-foreground/40",
+            )}
+          />
+          {running ? "Script running" : "No script running"}
+        </span>
         {status && (
           <span className="text-xs text-muted-foreground">{status}</span>
         )}
