@@ -1,6 +1,6 @@
 use std::time::Duration;
 use scraper::{Html, Selector};
-use crate::constants::FHASH;
+use crate::constants::fhash;
 use crate::device::DeviceIdentity;
 use crate::protocol::crypto::{compute_klv, hash_string};
 use crate::server_data::LoginInfo;
@@ -125,7 +125,7 @@ fn build_dashboard_body(
         ("totalPlaytime", "0"),
         ("klv",           klv),
         ("meta",          meta),
-        ("fhash",         &FHASH.to_string()),
+        ("fhash",         &fhash().to_string()),
         ("rid",           &device.rid),
         ("platformID",    "2"),
         ("deviceVersion", "0"),

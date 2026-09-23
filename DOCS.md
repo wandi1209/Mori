@@ -19,6 +19,25 @@ Two files hold local state, both under `data/` relative to the working directory
 |------|----------|
 | `data/user.json` | Argon2 hash of the master password |
 | `data/devices.json` | One device identity per account (see below) |
+| `data/version.json` | Client version the bot claims (optional; defaults are compiled in) |
+
+### Client version (`data/version.json`)
+
+Growtopia answers an outdated client with `UPDATE REQUIRED` and nothing else, and
+the version moves every few weeks. It is read once at start-up and printed:
+
+```
+[Version] game 5.57 protocol 225 fhash -716928004 (data/version.json)
+```
+
+```json
+{ "game_version": "5.57", "protocol": 225, "fhash": -716928004 }
+```
+
+Any field may be left out to keep the compiled-in default. The file is optional —
+without it the defaults apply — so a version bump is an edit and a restart rather
+than a rebuild. The current client version is whatever the app stores list for
+Growtopia.
 
 ### Device identity (`data/devices.json`)
 

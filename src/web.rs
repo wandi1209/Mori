@@ -264,8 +264,8 @@ async fn google_login_url(
         println!("[Google] fetching sign-in link for {account}");
         let device = crate::device::load_or_create(&account);
         let login_info = crate::server_data::LoginInfo {
-            protocol: crate::constants::PROTOCOL,
-            game_version: crate::constants::GAME_VER.into(),
+            protocol: crate::constants::protocol(),
+            game_version: crate::constants::game_version().into(),
         };
         let proxy_url = proxy.as_ref().map(|p: &Socks5Config| p.to_url());
         let server_data = crate::server_data::get_server_data_proxied(

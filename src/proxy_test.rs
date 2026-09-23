@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use crate::bot::Socks5Config;
-use crate::constants::{GAME_VER, PROTOCOL};
+use crate::constants::{game_version, protocol};
 use crate::server_data::{LoginInfo, get_server_data_proxied};
 use crate::socks5::Socks5UdpSocket;
 
@@ -26,8 +26,8 @@ pub struct ProxyTestResult {
 
 pub fn run_proxy_test(cfg: Socks5Config) -> ProxyTestResult {
     let login_info = LoginInfo {
-        protocol: PROTOCOL,
-        game_version: GAME_VER.into(),
+        protocol: protocol(),
+        game_version: game_version().into(),
     };
     let proxy_url = cfg.to_url();
 

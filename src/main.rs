@@ -1,7 +1,7 @@
 mod astar;
 mod auth;
 mod bot;
-mod constants;
+pub mod constants;
 mod cursor;
 mod inventory;
 pub mod events;
@@ -27,6 +27,10 @@ use bot_manager::BotManager;
 
 #[tokio::main]
 async fn main() {
+    // Touch the version early so the client it claims to be is the first thing in
+    // the log — an outdated one is answered with UPDATE REQUIRED and nothing else.
+    let _ = constants::game_version();
+
     let (ws_tx, _) = tokio::sync::broadcast::channel(256);
     let mgr = Arc::new(Mutex::new(BotManager::new(ws_tx.clone())));
     web::serve(mgr, ws_tx).await;

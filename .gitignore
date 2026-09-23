@@ -2,3 +2,4 @@
 dist
 user.json
 devices.json
+data/version.json
