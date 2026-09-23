@@ -117,6 +117,17 @@ then — those are picked up immediately instead of after another timer.
 Going again requires that the cycle harvested something, so a ready tree the bot
 cannot reach makes it wait rather than spin.
 
+### Walking
+
+Plots come back in world order, which begins at the top-left corner of the area
+however far that is from the bot. Each pass therefore remembers the first tree it
+harvested and starts planting there, wrapping around the rest, so the bot carries
+on from where it already is instead of walking back across the farm.
+
+At the end of a cycle it returns to the tile it started on, which keeps an idle
+bot parked in one place rather than standing wherever the last plot happened to
+be.
+
 ### Pace
 
 The bot paces itself: every punch and placement is followed by `place_ms` and

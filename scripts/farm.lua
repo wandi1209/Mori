@@ -93,6 +93,12 @@ local function inv(id)
   return getInventory():findItem(id)
 end
 
+--- The tile the bot is standing on.
+local function botTile()
+  local me = getLocal()
+  return math.floor(me.posx / 32), math.floor(me.posy / 32)
+end
+
 --- bot:hit and bot:place take an offset from the tile the bot is standing on,
 --- capped at four tiles in each direction — not absolute coordinates. Sending
 --- absolute ones punches whatever happens to sit that far away, or nothing at
@@ -237,9 +243,13 @@ end
 
 --- Harvests ready trees until none are left or the block stack fills up.
 --- Returns how many trees were actually punched, for the cycle summary.
+--- Returns how many trees were picked and the tile of the first one, so the rest
+--- of the pass can start where the bot already is instead of walking back to the
+--- corner of the farm.
 local function harvest(crop)
   local trees = readyTrees()
   local picked = 0
+  local first_x, first_y
   log(crop.name .. " harvest: " .. #trees .. " ready, "
     .. inv(crop.block_id) .. " blocks held")
 
@@ -252,7 +262,7 @@ local function harvest(crop)
     if held >= CONFIG.stack_cap or not bag:canCollect(crop.block_id) then
       log(crop.name .. " harvest: stack full at " .. held
         .. ", switching to break phase")
-      return picked
+      return picked, first_x, first_y
     end
 
     -- A full backpack does not stop a drop from falling, it stops it from being
@@ -260,14 +270,16 @@ local function harvest(crop)
     -- for nothing. Watch for progress rather than trusting one flag.
     if bag.itemcount >= bag.slotcount and held == 0 then
       log(crop.name .. " harvest: backpack is out of slots, nothing can be picked up")
-      return picked
+      return picked, first_x, first_y
     end
 
-    if not bot:isInWorld(CONFIG.world) then return picked end
+    if not bot:isInWorld(CONFIG.world) then return picked, first_x, first_y end
 
     if goNextTo(plot.x, plot.y) then
       punchUntilClear(crop, plot.x, plot.y)
       picked = picked + 1
+      first_x = first_x or plot.x
+      first_y = first_y or plot.y
 
       if inv(crop.block_id) <= held then
         stalled = stalled + 1
@@ -282,7 +294,7 @@ local function harvest(crop)
       end
     end
   end
-  return picked
+  return picked, first_x, first_y
 end
 
 --- Places blocks back down and breaks them, which is what yields seeds.
@@ -322,8 +334,27 @@ local function breakBlocks(crop)
 end
 
 --- Plants one seed on every free plot, until the seeds run out.
-local function plant(crop)
+--- Plants every free plot, starting at `from_x, from_y` and wrapping around.
+--- Plots come back in world order, which starts at the top-left corner however
+--- far away that is; beginning where the harvest did saves the walk back.
+local function plant(crop, from_x, from_y)
   local free = emptyPlots()
+
+  if from_x and from_y and #free > 1 then
+    local start = 1
+    for i, plot in ipairs(free) do
+      if plot.y > from_y or (plot.y == from_y and plot.x >= from_x) then
+        start = i
+        break
+      end
+    end
+    local rotated = {}
+    for i = 0, #free - 1 do
+      rotated[#rotated + 1] = free[((start - 1 + i) % #free) + 1]
+    end
+    free = rotated
+  end
+
   local planted, unreachable, refused = 0, 0, 0
   log(crop.name .. " plant: " .. #free .. " free plots, "
     .. inv(crop.seed_id) .. " seeds held")
@@ -420,17 +451,22 @@ local function runCycle(crop)
   local harvested, broken_from, planted = 0, 0, 0
   local stuck = false
 
+  -- Where the bot stood when the cycle began. It goes back there at the end, so
+  -- a farm left idle has its bot parked in one place rather than wherever the
+  -- last plot happened to be.
+  local home_x, home_y = botTile()
+
   -- One pass is harvest, break, plant. Harvesting stops at the 200-block stack
   -- cap, so a farm that yields more than that takes several passes: empty the
   -- stack into seeds, put those seeds in the ground, then go back for the trees
   -- that are still standing.
   for pass = 1, CONFIG.max_passes do
-    local picked = harvest(crop)
+    local picked, first_x, first_y = harvest(crop)
     harvested = harvested + picked
 
     broken_from = broken_from + inv(crop.block_id)
     breakBlocks(crop)
-    planted = planted + plant(crop)
+    planted = planted + plant(crop, first_x, first_y)
 
     -- Blocks still at the cap means breaking did not drain them, and harvesting
     -- cannot resume until it does. Going round again would only walk the farm.
@@ -446,6 +482,7 @@ local function runCycle(crop)
   end
 
   dumpSeeds(crop)
+  goTo(home_x, home_y)
 
   if stuck then return false end
 

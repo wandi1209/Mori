@@ -251,6 +251,17 @@ mod farm_script_tests {
     }
 
     #[test]
+    fn a_cycle_ends_where_it_started() {
+        let (lua, _) = run_script(&[]);
+        let x: i64 = lua.load("return SIM.x").eval().unwrap();
+        let y: i64 = lua.load("return SIM.y").eval().unwrap();
+
+        // The stub starts the bot at 0,0 and every move goes through findPath, so
+        // ending anywhere else means the cycle did not park it back home.
+        assert_eq!((x, y), (0, 0), "the bot should return to where it started");
+    }
+
+    #[test]
     fn the_bot_acts_on_the_tile_in_front_of_it() {
         let (lua, log) = run_script(&[]);
         let x: i64 = lua.load("return SIM.x").eval().unwrap();
