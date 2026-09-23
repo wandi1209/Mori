@@ -87,6 +87,26 @@ local function inv(id)
   return getInventory():findItem(id)
 end
 
+--- bot:hit and bot:place take an offset from the tile the bot is standing on,
+--- capped at four tiles in each direction — not absolute coordinates. Sending
+--- absolute ones punches whatever happens to sit that far away, or nothing at
+--- all. Everything else in this script works in absolute tiles, so the
+--- conversion lives here.
+local function offsetTo(x, y)
+  local me = getLocal()
+  return x - math.floor(me.posx / 32), y - math.floor(me.posy / 32)
+end
+
+local function hitTile(x, y)
+  local dx, dy = offsetTo(x, y)
+  bot:hit(dx, dy)
+end
+
+local function placeTile(x, y, item)
+  local dx, dy = offsetTo(x, y)
+  bot:place(dx, dy, item)
+end
+
 --- Looks the crop's numbers up in items.dat. Returns nil when the name is wrong,
 --- which is the likeliest configuration mistake.
 local function resolveCrop(name)
@@ -177,7 +197,7 @@ end
 --- both harvesting a tree and breaking a placed block.
 local function punchUntilClear(crop, x, y)
   for _ = 1, crop.hits do
-    bot:hit(x, y)
+    hitTile(x, y)
     nap(CONFIG.action_delay_ms)
 
     local tile = getTile(x, y)
@@ -234,7 +254,7 @@ local function breakBlocks(crop)
     end
 
     if goTo(plot.x, plot.y) then
-      bot:place(plot.x, plot.y, crop.block_id)
+      placeTile(plot.x, plot.y, crop.block_id)
       nap(CONFIG.action_delay_ms)
       punchUntilClear(crop, plot.x, plot.y)
       -- Auto-collect picks the drops up; give it a tick to do so.
@@ -261,7 +281,7 @@ local function plant(crop)
     if not goTo(plot.x, plot.y) then
       unreachable = unreachable + 1
     else
-      bot:place(plot.x, plot.y, crop.seed_id)
+      placeTile(plot.x, plot.y, crop.seed_id)
       nap(CONFIG.action_delay_ms)
 
       -- The server is free to ignore a placement — out of build range, no

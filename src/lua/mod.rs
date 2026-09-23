@@ -48,7 +48,8 @@ mod farm_script_tests {
     //! script once it reaches the end-of-cycle wait.
 
     const STUBS: &str = r#"
-        local S = { blocks = 0, seeds = 0, world = "", sleeps = 0, log = {}, printed = {} }
+        local S = { blocks = 0, seeds = 0, world = "", sleeps = 0, log = {}, printed = {},
+                    x = 0, y = 0 }
         _G.SIM = S
 
         local ITEMS = {
@@ -88,13 +89,15 @@ mod farm_script_tests {
 
         local bot = {}
         function bot:isInWorld(n) return S.world == n end
-        function bot:isInTile() return true end
-        function bot:findPath() end
+        function bot:isInTile(x, y) return S.x == x and S.y == y end
+        function bot:findPath(x, y) S.x, S.y = x, y end
+        function getLocal() return { posx = S.x * 32, posy = S.y * 32 } end
         function bot:setAutoCollect(on) S.collect = on end
         function bot:stopScript() error("STOPSCRIPT") end
         function bot:warp(n) S.world = n; S.log[#S.log+1] = "warp:" .. n end
         function bot:drop(id, n) S.seeds = S.seeds - n; S.log[#S.log+1] = "drop:" .. n end
-        function bot:hit(x, y)
+        function bot:hit(dx, dy)
+          local x, y = S.x + dx, S.y + dy
           local t = tileAt(x, y)
           if not t then return end
           if t.fg == 2019 and t.ready then            -- harvest a tree
@@ -107,7 +110,8 @@ mod farm_script_tests {
             S.log[#S.log+1] = "break"
           end
         end
-        function bot:place(x, y, id)
+        function bot:place(dx, dy, id)
+          local x, y = S.x + dx, S.y + dy
           local t = tileAt(x, y)
           if not t or t.fg ~= 0 then return end
           t.fg = id
