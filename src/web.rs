@@ -286,13 +286,41 @@ struct SpawnGoogleRequest {
     proxy_password: Option<String>,
 }
 
+/// Pulls the login token out of whatever the browser left the user holding.
+///
+/// A Google sign-in ends on a page showing the validation response itself —
+/// `{"status":"success","message":"Account Validated.","token":"...", ...}` — so
+/// the whole thing can be pasted. A URL carrying `token=`, including the
+/// `growtopia://` deep link, works too, as does the bare token.
+fn extract_token(input: &str) -> String {
+    let input = input.trim();
+
+    if input.starts_with('{') {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
+            if let Some(token) = v["token"].as_str() {
+                return token.to_string();
+            }
+        }
+    }
+
+    if let Some((_, rest)) = input.split_once("token=") {
+        let value = rest.split(['&', '#', '"']).next().unwrap_or(rest);
+        return urlencoding::decode(value)
+            .map(|s| s.into_owned())
+            .unwrap_or_else(|_| value.to_string());
+    }
+
+    // A token copied out of JSON by hand keeps its escaped slashes.
+    input.replace("\\/", "/")
+}
+
 /// Spawns a bot from a token obtained through the browser sign-in above.
 async fn spawn_google_bot(
     State(s): State<AppState>,
     Json(req): Json<SpawnGoogleRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let account = req.account.trim().to_string();
-    let token = req.token.trim().to_string();
+    let token = extract_token(&req.token);
     if account.is_empty() || token.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -651,4 +679,43 @@ pub async fn serve(manager: SharedManager, ws_tx: WsTx) {
     println!("WebSocket  ws://localhost:3000/ws");
     println!("API        http://localhost:3000/bots");
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_token;
+
+    #[test]
+    fn a_bare_token_is_left_alone() {
+        assert_eq!(extract_token("  ABC123  "), "ABC123");
+    }
+
+    #[test]
+    fn a_token_is_lifted_out_of_a_url() {
+        assert_eq!(
+            extract_token("https://login.growtopiagame.com/player/login/dashboard?token=ABC123"),
+            "ABC123"
+        );
+    }
+
+    #[test]
+    fn a_token_is_lifted_out_of_the_deep_link() {
+        assert_eq!(extract_token("growtopia://login?token=ABC123&foo=1"), "ABC123");
+    }
+
+    #[test]
+    fn percent_escapes_are_decoded() {
+        assert_eq!(extract_token("https://x/?token=a%2Fb%2Bc%3D"), "a/b+c=");
+    }
+
+    #[test]
+    fn the_whole_validation_json_can_be_pasted() {
+        let page = r#"{"status":"success","message":"Account Validated.","token":"AbC\/dEf+gh==","url":"","accountType":"google","accountAge":2}"#;
+        assert_eq!(extract_token(page), "AbC/dEf+gh==");
+    }
+
+    #[test]
+    fn slashes_escaped_by_hand_copying_are_restored() {
+        assert_eq!(extract_token(r"AbC\/dEf+gh=="), "AbC/dEf+gh==");
+    }
 }

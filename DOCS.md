@@ -233,6 +233,18 @@ Spawns a bot from the token that browser sign-in produced. `rid`, `mac` and `wk`
 come from the identity stored under `account` — the browser never sees them — so
 the same label must be used as in `/bots/google/url`.
 
+The browser finishes the Google sign-in on a page showing the validation response:
+
+```json
+{"status":"success","message":"Account Validated.","token":"...","accountType":"google"}
+```
+
+`token` accepts that whole response, a URL carrying `token=` (including the
+`growtopia://` deep link), or the bare token. A token rejected by Growtopia stops
+the bot with `login_failed` and says so — the server answers a bad token with a
+redirect to the login page rather than an error, which used to surface as a JSON
+parse failure.
+
 **Request Body**
 ```json
 {
@@ -254,8 +266,6 @@ the same label must be used as in `/bots/google/url`.
 |--------|---------|
 | `200` | Bot spawned |
 | `400` | `account` or `token` missing |
-
-A rejected token stops the bot with `login_failed` rather than retrying.
 
 ---
 

@@ -160,7 +160,18 @@ pub fn check_token(
         .body_mut()
         .read_to_string()?;
 
-    let response: Value = serde_json::from_str(&body)?;
+    // A rejected token does not come back as JSON: the server answers 302 and
+    // sends the client to the dashboard, so `body` is an HTML page. Saying that
+    // plainly beats a serde error about column 1.
+    let response: Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return Err(anyhow::anyhow!(
+                "token rejected - the server returned the login page instead of JSON, \
+                 which means the token is invalid, expired, or already used"
+            ));
+        }
+    };
 
     if response["status"] == "success" {
         let new_token = response["token"].as_str().unwrap_or_default().to_string();

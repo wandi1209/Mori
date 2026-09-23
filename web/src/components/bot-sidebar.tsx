@@ -194,15 +194,17 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
             </a>
           )}
           <Input
-            placeholder="Paste the token from the browser"
+            placeholder="Paste the token, URL, or the whole JSON"
             value={googleToken}
             onChange={(e) => setGoogleToken(e.target.value)}
             className="h-7 text-xs font-mono"
             required={method === 'google'}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Sign in with Google in the browser, then paste the token the flow ends
-            on. The device values are taken from this account's stored identity.
+            Sign in with Google in the browser. The page it ends on shows
+            <span className="font-mono"> {'{"status":"success"...'}</span> — paste
+            that whole response, or just its token. Device values come from this
+            account's stored identity.
           </p>
         </TabsContent>
 
