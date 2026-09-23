@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { botsAtom, selectedBotIdAtom } from '@/lib/store'
-import { api, type BotStatus, type SpawnBotBody, type SpawnLtokenBody } from '@/lib/api'
+import { api, type BotStatus, type GoogleUrlBody, type SpawnBotBody, type SpawnGoogleBody, type SpawnLtokenBody } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -78,13 +78,16 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [ltokenStr, setLtokenStr] = useState('')
+  const [account, setAccount] = useState('')
+  const [googleToken, setGoogleToken] = useState('')
+  const [googleUrl, setGoogleUrl] = useState('')
   const [showProxy, setShowProxy] = useState(false)
   const [proxyStr, setProxyStr] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [method, setMethod] = useState<'legacy' | 'ltoken'>('legacy')
+  const [method, setMethod] = useState<'legacy' | 'ltoken' | 'google'>('legacy')
 
-  function buildProxy(body: SpawnBotBody | SpawnLtokenBody) {
+  function buildProxy(body: SpawnBotBody | SpawnLtokenBody | SpawnGoogleBody | GoogleUrlBody) {
     if (showProxy && proxyStr) {
       const parts = proxyStr.split(':')
       if (parts.length >= 2) {
@@ -106,10 +109,14 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
         const body: SpawnBotBody = { username, password }
         buildProxy(body)
         await api.spawnBot(body)
-      } else {
+      } else if (method === 'ltoken') {
         const body: SpawnLtokenBody = { ltoken: ltokenStr }
         buildProxy(body)
         await api.spawnLtokenBot(body)
+      } else {
+        const body: SpawnGoogleBody = { account, token: googleToken }
+        buildProxy(body)
+        await api.spawnGoogleBot(body)
       }
       onDone()
     } catch {
@@ -121,10 +128,11 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
-      <Tabs value={method} onValueChange={(v) => setMethod(v as 'legacy' | 'ltoken')}>
+      <Tabs value={method} onValueChange={(v) => setMethod(v as 'legacy' | 'ltoken' | 'google')}>
         <TabsList className="w-full h-7">
           <TabsTrigger value="legacy" className="flex-1 text-[10px]">Legacy</TabsTrigger>
           <TabsTrigger value="ltoken" className="flex-1 text-[10px]">Ltoken</TabsTrigger>
+          <TabsTrigger value="google" className="flex-1 text-[10px]">Google</TabsTrigger>
         </TabsList>
 
         <TabsContent value="legacy" className="flex flex-col gap-1.5 mt-1.5">
@@ -143,6 +151,59 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
             className="h-7 text-xs"
             required={method === 'legacy'}
           />
+        </TabsContent>
+
+        <TabsContent value="google" className="flex flex-col gap-1.5 mt-1.5">
+          <Input
+            placeholder="Account label"
+            value={account}
+            onChange={(e) => setAccount(e.target.value)}
+            className="h-7 text-xs"
+            required={method === 'google'}
+          />
+          <button
+            type="button"
+            className="h-7 rounded-md border border-border text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+            disabled={!account || loading}
+            onClick={async () => {
+              setError('')
+              setLoading(true)
+              try {
+                const body: GoogleUrlBody = { account }
+                buildProxy(body)
+                const res = await api.googleLoginUrl(body)
+                setGoogleUrl(res.url)
+                window.open(res.url, '_blank', 'noopener')
+              } catch {
+                setError('Could not fetch the Google sign-in link')
+              } finally {
+                setLoading(false)
+              }
+            }}
+          >
+            {googleUrl ? 'Open sign-in again' : 'Get Google sign-in link'}
+          </button>
+          {googleUrl && (
+            <a
+              href={googleUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-blue-500 underline truncate"
+            >
+              {googleUrl}
+            </a>
+          )}
+          <Input
+            placeholder="Paste the token from the browser"
+            value={googleToken}
+            onChange={(e) => setGoogleToken(e.target.value)}
+            className="h-7 text-xs font-mono"
+            required={method === 'google'}
+          />
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Sign in with Google in the browser, then paste the token the flow ends
+            on. The device values are taken from this account's stored identity.
+          </p>
         </TabsContent>
 
         <TabsContent value="ltoken" className="mt-1.5">

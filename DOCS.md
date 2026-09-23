@@ -192,6 +192,73 @@ Spawns a new bot using a pre-existing ltoken instead of username/password. The t
 
 ---
 
+### POST `/bots/google/url`
+
+Returns the Google sign-in URL for an account, to be opened in a real browser.
+
+Growtopia serves this link from the same dashboard page the legacy login scrapes,
+and the request carries the device values stored for `account`, so the sign-in and
+the later game login present one machine.
+
+**Request Body**
+```json
+{
+  "account": "label",
+  "proxy_host": "string",
+  "proxy_port": 1080,
+  "proxy_username": "string",
+  "proxy_password": "string"
+}
+```
+
+`account` is a label of your choosing; it is the key the device identity is stored
+under in `data/devices.json`, and the same label must be used when spawning.
+
+**Response**
+```json
+{ "url": "https://..." }
+```
+
+| Status | Meaning |
+|--------|---------|
+| `200` | URL returned |
+| `400` | `account` missing |
+| `502` | Growtopia's dashboard could not be fetched, or offered no Google option |
+
+---
+
+### POST `/bots/google`
+
+Spawns a bot from the token that browser sign-in produced. `rid`, `mac` and `wk`
+come from the identity stored under `account` — the browser never sees them — so
+the same label must be used as in `/bots/google/url`.
+
+**Request Body**
+```json
+{
+  "account": "label",
+  "token": "string",
+  "proxy_host": "string",
+  "proxy_port": 1080,
+  "proxy_username": "string",
+  "proxy_password": "string"
+}
+```
+
+**Response**
+```json
+{ "id": 1 }
+```
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Bot spawned |
+| `400` | `account` or `token` missing |
+
+A rejected token stops the bot with `login_failed` rather than retrying.
+
+---
+
 ### DELETE `/bots/{id}`
 
 Stops and removes a bot.

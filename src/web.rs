@@ -11,7 +11,7 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::net::{ToSocketAddrs, SocketAddr};
 
@@ -203,6 +203,137 @@ async fn spawn_ltoken_bot(
     };
     let id = s.manager.lock().unwrap().spawn_ltoken(req.ltoken, proxy);
     Json(serde_json::json!({ "id": id }))
+}
+
+#[derive(Deserialize)]
+struct GoogleUrlRequest {
+    /// Label the account's device identity is stored under in data/devices.json.
+    account:        String,
+    proxy_host:     Option<String>,
+    proxy_port:     Option<u16>,
+    proxy_username: Option<String>,
+    proxy_password: Option<String>,
+}
+
+#[derive(Serialize)]
+struct GoogleUrlResponse {
+    url: String,
+}
+
+/// Returns the Google sign-in URL for an account, to be opened in a real browser.
+///
+/// The request that produces it has to carry the same device values the bot will
+/// log in with, so it goes out with the identity stored for `account` — the same
+/// one `POST /bots/google` will pair the returned token with.
+async fn google_login_url(
+    Json(req): Json<GoogleUrlRequest>,
+) -> Result<Json<GoogleUrlResponse>, (StatusCode, String)> {
+    if req.account.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "account is required".into()));
+    }
+
+    let proxy = socks5_from_parts(
+        req.proxy_host,
+        req.proxy_port,
+        req.proxy_username,
+        req.proxy_password,
+    );
+    let account = req.account.trim().to_string();
+
+    let links = tokio::task::spawn_blocking(move || {
+        let device = crate::device::load_or_create(&account);
+        let login_info = crate::server_data::LoginInfo {
+            protocol: crate::constants::PROTOCOL,
+            game_version: crate::constants::GAME_VER.into(),
+        };
+        let proxy_url = proxy.as_ref().map(|p: &Socks5Config| p.to_url());
+        let server_data = crate::server_data::get_server_data_proxied(
+            false,
+            &login_info,
+            proxy_url.as_deref(),
+        )
+        .map_err(|e| format!("server_data failed: {e}"))?;
+
+        crate::dashboard::get_dashboard_proxied(
+            &server_data.loginurl,
+            &login_info,
+            &server_data.meta,
+            proxy_url.as_deref(),
+            &device,
+        )
+        .map_err(|e| format!("dashboard failed: {e}"))
+    })
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "task failed".to_string()))?
+    .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+
+    match links.google {
+        Some(url) => Ok(Json(GoogleUrlResponse { url })),
+        None => Err((
+            StatusCode::BAD_GATEWAY,
+            "dashboard did not offer a Google option".into(),
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+struct SpawnGoogleRequest {
+    account:        String,
+    token:          String,
+    proxy_host:     Option<String>,
+    proxy_port:     Option<u16>,
+    proxy_username: Option<String>,
+    proxy_password: Option<String>,
+}
+
+/// Spawns a bot from a token obtained through the browser sign-in above.
+async fn spawn_google_bot(
+    State(s): State<AppState>,
+    Json(req): Json<SpawnGoogleRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let account = req.account.trim().to_string();
+    let token = req.token.trim().to_string();
+    if account.is_empty() || token.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "account and token are required".into(),
+        ));
+    }
+
+    let proxy = socks5_from_parts(
+        req.proxy_host,
+        req.proxy_port,
+        req.proxy_username,
+        req.proxy_password,
+    );
+    let id = s.manager.lock().unwrap().spawn_token(account, token, proxy);
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+/// Builds a SOCKS5 config from the proxy fields every spawn endpoint accepts.
+/// Host and port are required together; a host that is not already an address is
+/// resolved.
+fn socks5_from_parts(
+    host: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Option<Socks5Config> {
+    let (host, port) = match (host, port) {
+        (Some(h), Some(p)) => (h, p),
+        _ => return None,
+    };
+
+    let addr = format!("{host}:{port}")
+        .parse()
+        .ok()
+        .or_else(|| format!("{host}:{port}").to_socket_addrs().ok()?.next())?;
+
+    Some(Socks5Config {
+        proxy_addr: addr,
+        username,
+        password,
+    })
 }
 
 async fn stop_bot(
@@ -498,6 +629,8 @@ pub async fn serve(manager: SharedManager, ws_tx: WsTx) {
         // Protected API
         .route("/bots", get(list_bots).post(spawn_bot))
         .route("/bots/ltoken", post(spawn_ltoken_bot))
+        .route("/bots/google", post(spawn_google_bot))
+        .route("/bots/google/url", post(google_login_url))
         .route("/bots/{id}", delete(stop_bot))
         .route("/bots/{id}/state", get(bot_state))
         .route("/bots/{id}/cmd", post(bot_cmd))

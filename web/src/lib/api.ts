@@ -165,6 +165,23 @@ export interface SpawnLtokenBody {
   proxy_password?: string;
 }
 
+export interface SpawnGoogleBody {
+  account: string;
+  token: string;
+  proxy_host?: string;
+  proxy_port?: number;
+  proxy_username?: string;
+  proxy_password?: string;
+}
+
+export interface GoogleUrlBody {
+  account: string;
+  proxy_host?: string;
+  proxy_port?: number;
+  proxy_username?: string;
+  proxy_password?: string;
+}
+
 export type BotCmd =
   | { type: "move"; x: number; y: number }
   | { type: "walk_to"; x: number; y: number }
@@ -284,6 +301,10 @@ export const api = {
   spawnBot: (body: SpawnBotBody) => req<{ id: number }>("POST", "/bots", body),
   spawnLtokenBot: (body: SpawnLtokenBody) =>
     req<{ id: number }>("POST", "/bots/ltoken", body),
+  googleLoginUrl: (body: GoogleUrlBody) =>
+    req<{ url: string }>("POST", "/bots/google/url", body),
+  spawnGoogleBot: (body: SpawnGoogleBody) =>
+    req<{ id: number }>("POST", "/bots/google", body),
   deleteBot: (id: number) => req<void>("DELETE", `/bots/${id}`),
   getBotState: (id: number) => req<BotState>("GET", `/bots/${id}/state`),
   sendCmd: (id: number, cmd: BotCmd) =>

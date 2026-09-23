@@ -113,6 +113,46 @@ impl BotManager {
         id
     }
 
+    /// Spawns a bot from a bare token obtained through a browser sign-in (Google
+    /// or Apple). `account` is the label its device identity is stored under.
+    pub fn spawn_token(&mut self, account: String, token: String, proxy: Option<Socks5Config>) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let stop_flag  = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop_flag.clone();
+
+        let state = Arc::new(RwLock::new(BotState {
+            status: BotStatus::Connecting,
+            username: account.clone(),
+            ..Default::default()
+        }));
+        let state_clone = state.clone();
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<BotCommand>();
+
+        let items_dat = self.items_dat.clone();
+        let ws_tx_clone = self.ws_tx.clone();
+        let label = account.clone();
+
+        std::thread::spawn(move || {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let Some(mut bot) = crate::bot::Bot::new_token(&label, &token, proxy, state_clone, cmd_rx, items_dat, id, Some(ws_tx_clone)) else {
+                    println!("[Bot:{id}] Login failed, not starting.");
+                    return;
+                };
+                bot.run(stop_clone);
+            })) {
+                Ok(_)  => println!("[Bot:{id}] Stopped."),
+                Err(_) => println!("[Bot:{id}] Crashed."),
+            }
+        });
+
+        self.bots.insert(id, BotEntry { username: account.clone(), stop_flag, state, cmd_tx });
+        let _ = self.ws_tx.send(WsEvent::BotAdded { bot_id: id, username: account });
+        id
+    }
+
     pub fn stop(&mut self, id: u32) -> bool {
         if let Some(entry) = self.bots.remove(&id) {
             entry.stop_flag.store(true, Ordering::Relaxed);

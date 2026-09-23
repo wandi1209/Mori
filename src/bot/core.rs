@@ -507,6 +507,8 @@ impl Bot {
         Some((token, rid, mac, wk))
     }
 
+    /// Starts a bot from a `token|rid|mac|wk` string, where the device values come
+    /// from the token itself.
     pub fn new_ltoken(
         ltoken_str: &str,
         proxy: Option<Socks5Config>,
@@ -531,6 +533,68 @@ impl Bot {
         // rid/mac/wk come from the token itself; only hash2's seed needs storing so
         // it stays the same across reconnects of the same identity.
         let identity = device::load_or_create_with(&rid, &rid, &mac, &wk);
+        Self::from_token(ltoken, identity, rid.clone(), proxy, state, cmd_rx, items_dat, bot_id, ws_tx)
+    }
+
+    /// Starts a bot from a bare token — the one a Google or Apple sign-in hands
+    /// back — paired with the device identity stored for `account`. The browser
+    /// that performed the sign-in never sees rid/mac/wk, so they have to come
+    /// from here, and staying with the account keeps them stable across logins.
+    pub fn new_token(
+        account: &str,
+        token: &str,
+        proxy: Option<Socks5Config>,
+        state: Arc<RwLock<BotState>>,
+        cmd_rx: CmdReceiver,
+        items_dat: Arc<ItemsDat>,
+        bot_id: u32,
+        ws_tx: Option<WsTx>,
+    ) -> Option<Self> {
+        if token.trim().is_empty() {
+            let reason = "empty token".to_string();
+            println!("[Bot] {reason}");
+            let mut s = state.write().unwrap();
+            s.status = BotStatus::LoginFailed;
+            s.status_detail = Some(reason);
+            return None;
+        }
+
+        let identity = device::load_or_create(account);
+        {
+            let mut s = state.write().unwrap();
+            s.username = account.to_string();
+        }
+        Self::from_token(
+            token.trim().to_string(),
+            identity,
+            account.to_string(),
+            proxy,
+            state,
+            cmd_rx,
+            items_dat,
+            bot_id,
+            ws_tx,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn from_token(
+        ltoken: String,
+        identity: crate::device::DeviceIdentity,
+        device_key: String,
+        proxy: Option<Socks5Config>,
+        state: Arc<RwLock<BotState>>,
+        cmd_rx: CmdReceiver,
+        items_dat: Arc<ItemsDat>,
+        bot_id: u32,
+        ws_tx: Option<WsTx>,
+    ) -> Option<Self> {
+        let rid = identity.rid.clone();
+        let mac = identity.mac.clone();
+        let wk = identity.wk.clone();
+        // A Google bot already has its account label in the state; an ltoken bot has
+        // nothing to call itself until the server names it.
+        let state_username = state.read().unwrap().username.clone();
         let hash = hash_string(&format!("{}RT", mac));
         let hash2 = hash_string(&format!("{}RT", identity.hash2_seed));
 
@@ -611,12 +675,12 @@ impl Bot {
         let mut bot = Bot {
             host,
             proxy,
-            username: String::new(),
+            username: state_username,
             login_method: LoginMethod::Ltoken,
             ltoken,
             meta: server_data.meta,
             device: identity,
-            device_key: rid.clone(),
+            device_key,
             mac,
             hash,
             hash2,
