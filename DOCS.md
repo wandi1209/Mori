@@ -240,10 +240,13 @@ The browser finishes the Google sign-in on a page showing the validation respons
 ```
 
 `token` accepts that whole response, a URL carrying `token=` (including the
-`growtopia://` deep link), or the bare token. A token rejected by Growtopia stops
-the bot with `login_failed` and says so — the server answers a bad token with a
-redirect to the login page rather than an error, which used to surface as a JSON
-parse failure.
+`growtopia://` deep link), or the bare token.
+
+The token is checked against `/player/growid/checktoken` first, which refreshes it
+when it answers. That endpoint replies to a bad token with a redirect to the login
+page — and replies the same way when it is refusing the client for other reasons —
+so a failed check is logged and the bot goes on to try the token against the game
+server, which answers with a reason the bot can report.
 
 **Request Body**
 ```json

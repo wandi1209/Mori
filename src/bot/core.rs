@@ -652,18 +652,21 @@ impl Bot {
             identity.total_playtime,
         );
 
+        // check_token refreshes the token when it answers. When it does not, the
+        // reply is a redirect to the login page, which reads the same whether the
+        // token is bad or the endpoint is simply refusing this client for now — so
+        // it is not evidence enough to throw a token away. The game server gives a
+        // real answer, with a reason, so let it be the judge.
         let ltoken = match check_token(&ltoken, &login_data, proxy_url_ref) {
             Ok(new_token) => {
-                log_fn(format!("[Bot] ltoken validated successfully"));
+                log_fn("[Bot] token validated".to_string());
                 new_token
             }
             Err(e) => {
-                let reason = format!("ltoken validation failed: {e}");
-                log_fn(format!("[Bot] {reason}"));
-                let mut s = state.write().unwrap();
-                s.status = BotStatus::LoginFailed;
-                s.status_detail = Some(reason);
-                return None;
+                log_fn(format!(
+                    "[Bot] could not validate token ({e}) - trying it on the game server anyway"
+                ));
+                ltoken
             }
         };
 
