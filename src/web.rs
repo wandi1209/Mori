@@ -18,7 +18,7 @@ use std::net::{ToSocketAddrs, SocketAddr};
 use crate::auth::AuthState;
 use crate::bot::Socks5Config;
 use crate::bot_manager::{BotInfo, BotManager};
-use crate::bot_state::{BotCommand, BotDelays, BotState};
+use crate::bot_state::{ActiveHours, BotCommand, BotDelays, BotState};
 use crate::events::WsTx;
 use crate::items::ItemInfo;
 use crate::proxy_test::{ProxyTestResult, run_proxy_test};
@@ -238,6 +238,7 @@ enum CmdRequest {
     Drop { item_id: u32, count: u32 },
     Trash { item_id: u32, count: u32 },
     SetDelays(BotDelays),
+    SetActiveHours(ActiveHours),
     SetAutoCollect { enabled: bool },
     SetCollectConfig {
         radius_tiles: u8,
@@ -345,6 +346,7 @@ async fn bot_cmd(
         CmdRequest::Drop { item_id, count } => BotCommand::Drop { item_id, count },
         CmdRequest::Trash { item_id, count } => BotCommand::Trash { item_id, count },
         CmdRequest::SetDelays(d) => BotCommand::SetDelays(d),
+        CmdRequest::SetActiveHours(c) => BotCommand::SetActiveHours(c),
         CmdRequest::SetAutoCollect { enabled } => BotCommand::SetAutoCollect { enabled },
         CmdRequest::SetCollectConfig {
             radius_tiles,

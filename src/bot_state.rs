@@ -20,6 +20,9 @@ pub enum BotStatus {
     UpdateRequired,
     /// Server is under maintenance. Retrying after 600 s.
     Maintenance,
+    /// Logged out on purpose: outside the configured active hours, or on a break
+    /// between sessions. `BotState::status_detail` says when it comes back.
+    Resting,
     /// The HTTP login chain gave up. `BotState::status_detail` says why. Bot stopped.
     LoginFailed,
 }
@@ -36,6 +39,7 @@ impl fmt::Display for BotStatus {
             BotStatus::UpdateRequired   => write!(f, "update_required"),
             BotStatus::Maintenance      => write!(f, "maintenance"),
             BotStatus::LoginFailed      => write!(f, "login_failed"),
+            BotStatus::Resting          => write!(f, "resting"),
         }
     }
 }
@@ -87,6 +91,41 @@ pub struct TrackInfo {
     pub install_date:    u64,
     pub global_playtime: u64,
     pub awesomeness:     u32,
+}
+
+/// When a bot is allowed to be online.
+///
+/// A bot that is connected every hour of every day, without a single break, is
+/// distinguishable from a player on playtime alone — no behavioural analysis
+/// needed. Within the daily window the bot also alternates play sessions with
+/// breaks, both randomised by `jitter_pct`.
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActiveHours {
+    pub enabled: bool,
+    /// Start of the daily window, minutes after local midnight.
+    pub start_minute: u16,
+    /// End of the window, minutes after local midnight. Equal to `start_minute`
+    /// means the whole day; a value below it means the window crosses midnight.
+    pub end_minute: u16,
+    /// Length of one play session in minutes. 0 disables breaks entirely.
+    pub session_minutes: u32,
+    /// Length of a break between sessions, in minutes.
+    pub break_minutes: u32,
+    /// Random spread applied to both lengths, in percent (0-90).
+    pub jitter_pct: u8,
+}
+
+impl Default for ActiveHours {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start_minute: 8 * 60,
+            end_minute: 23 * 60,
+            session_minutes: 90,
+            break_minutes: 20,
+            jitter_pct: 30,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -147,6 +186,8 @@ pub struct BotState {
     pub ping_ms: u32,
     /// Configurable delays for bot actions.
     pub delays: BotDelays,
+    /// When this bot is allowed to be online.
+    pub active_hours: ActiveHours,
     pub track_info: Option<TrackInfo>,
     /// Whether the run loop should auto-collect nearby dropped items.
     pub auto_collect: bool,
@@ -162,6 +203,9 @@ pub struct BotState {
     /// Skip essences (item IDs 5024/5026/5028/5030) during auto-collect when true.
     pub ignore_essences: bool,
     /// Leave world automatically when a mod is detected via OnSpawn.
+    /// Leave the world when a mod (or an invisible mod) spawns in it. On by
+    /// default: a moderator watching the character move is the likeliest way a
+    /// bot is noticed at all.
     pub auto_leave_on_mod: bool,
     /// Send `/ban <name>` when any non-local player spawns.
     pub auto_ban: bool,
@@ -192,13 +236,14 @@ impl Default for BotState {
             console: Vec::new(),
             ping_ms: 0,
             delays: BotDelays::default(),
+            active_hours: ActiveHours::default(),
             track_info: None,
             auto_collect: true,
             collect_radius_tiles: 1,
             collect_blacklist: Vec::new(),
             ignore_gems: false,
             ignore_essences: false,
-            auto_leave_on_mod: false,
+            auto_leave_on_mod: true,
             auto_ban: false,
             collect_path_check: true,
             auto_reconnect: true,
@@ -226,6 +271,7 @@ pub enum BotCommand {
     Respawn,
     FindPath { x: u32, y: u32 },
     SetDelays(BotDelays),
+    SetActiveHours(ActiveHours),
     SetAutoCollect { enabled: bool },
     SetCollectConfig {
         radius_tiles: u8,

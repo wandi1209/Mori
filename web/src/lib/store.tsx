@@ -30,6 +30,7 @@ export interface LiveBot {
   inventory_slots: number
   console: string[]
   status_detail: string | null
+  active_hours: { enabled: boolean; start_minute: number; end_minute: number; session_minutes: number; break_minutes: number; jitter_pct: number }
   delays: { place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }
   track_info: TrackInfo | null
   auto_collect: boolean
@@ -48,6 +49,7 @@ export function makeBot(id: number, username: string): LiveBot {
     tiles: [], players: new Map(),
     objects: [], inventory: [], inventory_slots: 0, console: [],
     status_detail: null,
+    active_hours: { enabled: false, start_minute: 480, end_minute: 1380, session_minutes: 90, break_minutes: 20, jitter_pct: 30 },
     delays: { place_ms: 500, walk_ms: 500, jitter_pct: 25, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
     track_info: null,
     auto_collect: true,
@@ -129,6 +131,9 @@ export function useMoriStore() {
 
       ['BotAutoCollect', (d: { bot_id: number; enabled: boolean }) =>
         setBots((m) => patchBot(m, d.bot_id, { auto_collect: d.enabled }))],
+
+      ['BotActiveHours', (d: { bot_id: number; enabled: boolean; start_minute: number; end_minute: number; session_minutes: number; break_minutes: number; jitter_pct: number }) =>
+        setBots((m) => patchBot(m, d.bot_id, { active_hours: { enabled: d.enabled, start_minute: d.start_minute, end_minute: d.end_minute, session_minutes: d.session_minutes, break_minutes: d.break_minutes, jitter_pct: d.jitter_pct } }))],
 
       ['BotDelays', (d: { bot_id: number; place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }) =>
         setBots((m) => patchBot(m, d.bot_id, { delays: { place_ms: d.place_ms, walk_ms: d.walk_ms, jitter_pct: d.jitter_pct, twofa_secs: d.twofa_secs, server_overload_secs: d.server_overload_secs, too_many_logins_secs: d.too_many_logins_secs, maintenance_secs: d.maintenance_secs } }))],

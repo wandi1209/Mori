@@ -45,6 +45,7 @@ const STATUS_DOT: Record<BotStatus, string> = {
   too_many_logins: "bg-purple-500",
   update_required: "bg-gray-500",
   login_failed: "bg-red-600",
+  resting: "bg-slate-400",
   maintenance: "bg-amber-500",
 };
 
@@ -83,6 +84,7 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
           console: s.console,
           ping_ms: s.ping_ms,
           delays: s.delays,
+          active_hours: s.active_hours,
           track_info: s.track_info,
           auto_collect: s.auto_collect,
           collect_radius_tiles: s.collect_radius_tiles,
@@ -200,6 +202,7 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
           <ConfigTab
             botId={bot.id}
             delays={bot.delays}
+            activeHours={bot.active_hours}
             autoCollect={bot.auto_collect}
             autoReconnect={bot.auto_reconnect}
           />
@@ -615,15 +618,192 @@ function ScriptTab({ botId }: { botId: number }) {
   );
 }
 
+// ── Active hours ────────────────────────────────────────────────────────────
+
+/** "480" -> "08:00", for <input type="time">. */
+function minuteToTime(minute: number): string {
+  const h = Math.floor(minute / 60) % 24;
+  const m = minute % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function timeToMinute(value: string): number {
+  const [h, m] = value.split(":").map((v) => parseInt(v, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+  return (h % 24) * 60 + (m % 60);
+}
+
+function ActiveHoursPanel({
+  botId,
+  activeHours,
+}: {
+  botId: number;
+  activeHours: {
+    enabled: boolean;
+    start_minute: number;
+    end_minute: number;
+    session_minutes: number;
+    break_minutes: number;
+    jitter_pct: number;
+  };
+}) {
+  const [start, setStart] = useState(minuteToTime(activeHours.start_minute));
+  const [end, setEnd] = useState(minuteToTime(activeHours.end_minute));
+  const [session, setSession] = useState(String(activeHours.session_minutes));
+  const [brk, setBrk] = useState(String(activeHours.break_minutes));
+  const [jitter, setJitter] = useState(String(activeHours.jitter_pct));
+  const [status, setStatus] = useState("");
+  const setBots = useSetAtom(botsAtom);
+
+  useEffect(() => {
+    setStart(minuteToTime(activeHours.start_minute));
+    setEnd(minuteToTime(activeHours.end_minute));
+    setSession(String(activeHours.session_minutes));
+    setBrk(String(activeHours.break_minutes));
+    setJitter(String(activeHours.jitter_pct));
+  }, [
+    activeHours.start_minute,
+    activeHours.end_minute,
+    activeHours.session_minutes,
+    activeHours.break_minutes,
+    activeHours.jitter_pct,
+  ]);
+
+  async function send(next: typeof activeHours) {
+    setBots((m) => {
+      const bot = m.get(botId);
+      if (!bot) return m;
+      return new Map(m).set(botId, { ...bot, active_hours: next });
+    });
+    try {
+      await api.sendCmd(botId, { type: "set_active_hours", ...next });
+      setStatus("Saved");
+      setTimeout(() => setStatus(""), 2000);
+    } catch {
+      setStatus("Error");
+    }
+  }
+
+  return (
+    <>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Active Hours
+      </p>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <Switch
+          size="sm"
+          checked={activeHours.enabled}
+          onCheckedChange={(enabled) => send({ ...activeHours, enabled })}
+        />
+        <span className="text-xs text-muted-foreground">
+          Log out outside these hours and between sessions
+        </span>
+      </label>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs text-muted-foreground">From</span>
+            <Input
+              type="time"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs text-muted-foreground">To</span>
+            <Input
+              type="time"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs text-muted-foreground">Session (min)</span>
+            <Input
+              type="number"
+              min={0}
+              step={5}
+              value={session}
+              onChange={(e) => setSession(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs text-muted-foreground">Break (min)</span>
+            <Input
+              type="number"
+              min={0}
+              step={5}
+              value={brk}
+              onChange={(e) => setBrk(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs text-muted-foreground">Jitter (%)</span>
+            <Input
+              type="number"
+              min={0}
+              max={90}
+              step={5}
+              value={jitter}
+              onChange={(e) => setJitter(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </label>
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          Session 0 keeps the bot online for the whole window. Both lengths are
+          randomised by the jitter percentage.
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          className="text-xs"
+          onClick={() =>
+            send({
+              enabled: activeHours.enabled,
+              start_minute: timeToMinute(start),
+              end_minute: timeToMinute(end),
+              session_minutes: parseInt(session, 10) || 0,
+              break_minutes: parseInt(brk, 10) || 0,
+              jitter_pct: Math.min(90, Math.max(0, parseInt(jitter, 10) || 0)),
+            })
+          }
+        >
+          Save
+        </Button>
+        {status && (
+          <span className="text-xs text-muted-foreground">{status}</span>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── Config tab ──────────────────────────────────────────────────────────────
 
 function ConfigTab({
   botId,
   delays,
+  activeHours,
   autoCollect,
   autoReconnect,
 }: {
   botId: number;
+  activeHours: {
+    enabled: boolean;
+    start_minute: number;
+    end_minute: number;
+    session_minutes: number;
+    break_minutes: number;
+    jitter_pct: number;
+  };
   delays: {
     place_ms: number;
     walk_ms: number;
@@ -808,6 +988,7 @@ function ConfigTab({
           <span className="text-xs text-muted-foreground">{status}</span>
         )}
       </div>
+      <ActiveHoursPanel botId={botId} activeHours={activeHours} />
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         Behaviour
       </p>

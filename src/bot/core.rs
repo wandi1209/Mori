@@ -188,6 +188,17 @@ pub struct Bot {
     pathfind_recalc: bool,
     /// Configurable delays for bot actions.
     pub delays: BotDelays,
+    /// When this bot is allowed to be online.
+    pub active_hours: crate::bot_state::ActiveHours,
+    /// Set while the bot is deliberately logged out by the schedule.
+    resting: bool,
+    /// When the current rest ends. `None` while resting outside the daily window,
+    /// which is re-checked each tick instead.
+    rest_until: Option<std::time::Instant>,
+    /// When the current play session ends and a break begins.
+    session_until: Option<std::time::Instant>,
+    /// Throttles the schedule check to once a second.
+    schedule_checked: std::time::Instant,
     /// Item database for collision-type lookups.
     pub items_dat: Arc<ItemsDat>,
     /// Forwards events to the running script thread (None when no script is active).
@@ -265,6 +276,37 @@ fn axis_velocity(delta: f32, speed: f32) -> f32 {
         -speed
     } else {
         speed
+    }
+}
+
+/// Whether `minute` (minutes after local midnight) falls inside the daily window
+/// `[start, end)`. `start == end` means the whole day; `end < start` means the
+/// window crosses midnight, e.g. 22:00 to 06:00.
+/// Minutes elapsed since local midnight.
+fn local_minute_of_day() -> u16 {
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    (now.hour() * 60 + now.minute()) as u16
+}
+
+fn within_window(minute: u16, start: u16, end: u16) -> bool {
+    if start == end {
+        true
+    } else if start < end {
+        minute >= start && minute < end
+    } else {
+        minute >= start || minute < end
+    }
+}
+
+/// Minutes from `minute` until the window opens again. Zero when it is already open.
+fn minutes_until_window(minute: u16, start: u16, end: u16) -> u16 {
+    if within_window(minute, start, end) {
+        0
+    } else if start > minute {
+        start - minute
+    } else {
+        (24 * 60) - minute + start
     }
 }
 
@@ -406,7 +448,7 @@ impl Bot {
             auto_collect: true,
             ignore_gems: false,
             ignore_essences: false,
-            auto_leave_on_mod: false,
+            auto_leave_on_mod: true,
             auto_ban: false,
             auto_reconnect: true,
             reconnect_interval: 0,
@@ -418,6 +460,11 @@ impl Bot {
             pathfind_target: None,
             pathfind_recalc: false,
             delays: BotDelays::default(),
+            active_hours: crate::bot_state::ActiveHours::default(),
+            resting: false,
+            rest_until: None,
+            session_until: None,
+            schedule_checked: std::time::Instant::now(),
             items_dat,
             event_tx: None,
             script_req_rx: None,
@@ -592,7 +639,7 @@ impl Bot {
             auto_collect: true,
             ignore_gems: false,
             ignore_essences: false,
-            auto_leave_on_mod: false,
+            auto_leave_on_mod: true,
             auto_ban: false,
             auto_reconnect: true,
             reconnect_interval: 0,
@@ -604,6 +651,11 @@ impl Bot {
             pathfind_target: None,
             pathfind_recalc: false,
             delays: BotDelays::default(),
+            active_hours: crate::bot_state::ActiveHours::default(),
+            resting: false,
+            rest_until: None,
+            session_until: None,
+            schedule_checked: std::time::Instant::now(),
             items_dat,
             event_tx: None,
             script_req_rx: None,
@@ -775,6 +827,93 @@ impl Bot {
         )
     }
 
+    /// Applies the active-hours schedule: logs the bot out when it is outside the
+    /// daily window or on a break, and brings it back when the time comes.
+    fn tick_schedule(&mut self) {
+        if self.schedule_checked.elapsed() < std::time::Duration::from_secs(1) {
+            return;
+        }
+        self.schedule_checked = std::time::Instant::now();
+
+        let cfg = self.active_hours.clone();
+        if !cfg.enabled {
+            if self.resting {
+                self.end_rest();
+            }
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let minute = local_minute_of_day();
+
+        if !within_window(minute, cfg.start_minute, cfg.end_minute) {
+            if !self.resting {
+                let wait = minutes_until_window(minute, cfg.start_minute, cfg.end_minute);
+                self.begin_rest(None, format!("outside active hours, back in {wait}m"));
+            }
+            return;
+        }
+
+        if self.resting {
+            match self.rest_until {
+                // Rest that ends on a clock: wait for it.
+                Some(until) if now < until => {}
+                // Break over, or the window just opened again.
+                _ => self.end_rest(),
+            }
+            return;
+        }
+
+        if cfg.session_minutes == 0 {
+            return;
+        }
+
+        let session_end = *self.session_until.get_or_insert_with(|| {
+            now + std::time::Duration::from_secs(
+                jitter_ms(cfg.session_minutes as u64 * 60, cfg.jitter_pct),
+            )
+        });
+
+        if now >= session_end {
+            let break_secs = jitter_ms(cfg.break_minutes as u64 * 60, cfg.jitter_pct);
+            self.session_until = None;
+            self.begin_rest(
+                Some(now + std::time::Duration::from_secs(break_secs)),
+                format!("on a break for {}m", break_secs.div_ceil(60)),
+            );
+        }
+    }
+
+    /// Logs out until `until`, or until the daily window reopens when it is `None`.
+    fn begin_rest(&mut self, until: Option<std::time::Instant>, reason: String) {
+        self.log_console(format!("[Bot] Schedule: {reason}"));
+        self.resting = true;
+        self.rest_until = until;
+        self.session_until = None;
+        self.disconnect();
+        {
+            let mut s = self.state.write().unwrap();
+            s.status = BotStatus::Resting;
+            s.status_detail = Some(reason);
+        }
+        self.emit(WsEvent::BotStatus {
+            bot_id: self.bot_id,
+            status: BotStatus::Resting.to_string(),
+        });
+    }
+
+    fn end_rest(&mut self) {
+        self.log_console("[Bot] Schedule: back online".to_string());
+        self.resting = false;
+        self.rest_until = None;
+        {
+            let mut s = self.state.write().unwrap();
+            s.status = BotStatus::Connecting;
+            s.status_detail = None;
+        }
+        self.reconnect_main();
+    }
+
     /// Playtime the account has accumulated: what the server last told us, plus the
     /// time this session has been running.
     fn total_playtime(&self) -> u64 {
@@ -877,6 +1016,7 @@ impl Bot {
                     }
                 }
             }
+            self.tick_schedule();
             while let Ok(cmd) = self.cmd_rx.try_recv() {
                 self.handle_command(cmd);
             }
@@ -958,6 +1098,8 @@ impl Bot {
                         self.host.connect(addr, 2, 0);
                     } else if self.reconnect_after.is_some() {
                         // Delayed reconnect already scheduled (e.g. 2FA cooldown) — do nothing here.
+                    } else if self.resting {
+                        // A scheduled logout; tick_schedule brings the bot back.
                     } else if self.auto_reconnect {
                         if self.reconnect_interval > 0 {
                             self.log_console(format!(
@@ -2951,6 +3093,24 @@ impl Bot {
             BotCommand::FindPath { x, y } => {
                 self.find_path(x, y);
             }
+            BotCommand::SetActiveHours(cfg) => {
+                let cfg = crate::bot_state::ActiveHours {
+                    jitter_pct: cfg.jitter_pct.min(90),
+                    ..cfg
+                };
+                self.active_hours = cfg.clone();
+                self.session_until = None;
+                self.state.write().unwrap().active_hours = cfg.clone();
+                self.emit(WsEvent::BotActiveHours {
+                    bot_id: self.bot_id,
+                    enabled: cfg.enabled,
+                    start_minute: cfg.start_minute,
+                    end_minute: cfg.end_minute,
+                    session_minutes: cfg.session_minutes,
+                    break_minutes: cfg.break_minutes,
+                    jitter_pct: cfg.jitter_pct,
+                });
+            }
             BotCommand::SetDelays(mut d) => {
                 d.jitter_pct = d.jitter_pct.min(90);
                 self.delays = d.clone();
@@ -3218,7 +3378,10 @@ impl Bot {
 
 #[cfg(test)]
 mod tests {
-    use super::{axis_velocity, build_client_data, jitter_ms, walk_steps, DEFAULT_WALK_SPEED};
+    use super::{
+        axis_velocity, build_client_data, jitter_ms, minutes_until_window, walk_steps,
+        within_window, DEFAULT_WALK_SPEED,
+    };
     use crate::device::DeviceIdentity;
 
     fn field<'a>(payload: &'a str, key: &str) -> &'a str {
@@ -3261,6 +3424,39 @@ mod tests {
         assert_eq!(axis_velocity(-5.0, DEFAULT_WALK_SPEED), -DEFAULT_WALK_SPEED);
         assert_eq!(axis_velocity(5.0, DEFAULT_WALK_SPEED), DEFAULT_WALK_SPEED);
         assert_eq!(axis_velocity(0.0, DEFAULT_WALK_SPEED), 0.0);
+    }
+
+    #[test]
+    fn a_daytime_window_covers_only_its_own_hours() {
+        let (start, end) = (8 * 60, 23 * 60);
+        assert!(within_window(8 * 60, start, end));
+        assert!(within_window(22 * 60 + 59, start, end));
+        assert!(!within_window(23 * 60, start, end), "end is exclusive");
+        assert!(!within_window(7 * 60 + 59, start, end));
+        assert!(!within_window(3 * 60, start, end));
+    }
+
+    #[test]
+    fn a_window_may_cross_midnight() {
+        let (start, end) = (22 * 60, 6 * 60);
+        assert!(within_window(23 * 60, start, end));
+        assert!(within_window(2 * 60, start, end));
+        assert!(!within_window(12 * 60, start, end));
+    }
+
+    #[test]
+    fn equal_bounds_mean_all_day() {
+        assert!(within_window(0, 0, 0));
+        assert!(within_window(13 * 60, 9 * 60, 9 * 60));
+    }
+
+    #[test]
+    fn wait_is_measured_to_the_next_opening() {
+        let (start, end) = (8 * 60, 23 * 60);
+        assert_eq!(minutes_until_window(10 * 60, start, end), 0, "already open");
+        assert_eq!(minutes_until_window(6 * 60, start, end), 2 * 60);
+        // 23:30 today -> 08:00 tomorrow
+        assert_eq!(minutes_until_window(23 * 60 + 30, start, end), 8 * 60 + 30);
     }
 
     #[test]

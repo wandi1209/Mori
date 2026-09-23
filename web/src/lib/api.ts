@@ -57,7 +57,8 @@ export type BotStatus =
   | "too_many_logins"
   | "update_required"
   | "maintenance"
-  | "login_failed";
+  | "login_failed"
+  | "resting";
 
 export interface BotSummary {
   id: number;
@@ -94,6 +95,15 @@ export interface InventoryItem {
   action_type: number;
 }
 
+export interface ActiveHours {
+  enabled: boolean;
+  start_minute: number;
+  end_minute: number;
+  session_minutes: number;
+  break_minutes: number;
+  jitter_pct: number;
+}
+
 export interface BotState {
   status: BotStatus;
   status_detail: string | null;
@@ -115,6 +125,7 @@ export interface BotState {
   gems: number;
   console: string[];
   ping_ms: number;
+  active_hours: ActiveHours;
   delays: {
     place_ms: number;
     walk_ms: number;
@@ -173,6 +184,7 @@ export type BotCmd =
     too_many_logins_secs: number;
     maintenance_secs: number;
   }
+  | ({ type: "set_active_hours" } & ActiveHours)
   | { type: "set_auto_collect"; enabled: boolean }
   | { type: "set_auto_reconnect"; enabled: boolean }
   | { type: "disconnect" }

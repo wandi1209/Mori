@@ -212,6 +212,14 @@ Returns the full state of a bot.
 {
   "status": "in_game",
   "status_detail": null,
+  "active_hours": {
+    "enabled": false,
+    "start_minute": 480,
+    "end_minute": 1380,
+    "session_minutes": 90,
+    "break_minutes": 20,
+    "jitter_pct": 30
+  },
   "world_name": "string",
   "pos_x": 0.0,
   "pos_y": 0.0,
@@ -356,6 +364,30 @@ Configure action delays. `place_ms` and `walk_ms` are in milliseconds; `jitter_p
   "server_overload_secs": 30,
   "too_many_logins_secs": 5,
   "maintenance_secs": 600
+}
+```
+
+#### `set_active_hours`
+Restricts when the bot may be online. Outside the daily window, and during breaks
+between sessions, the bot disconnects and reports `resting`; `status_detail` says
+when it comes back. Auto-reconnect is suppressed while resting.
+
+`start_minute` and `end_minute` are minutes after local midnight (`480` = 08:00),
+the end being exclusive. Equal values mean the whole day; an end below the start
+means the window crosses midnight, e.g. 22:00 to 06:00. `session_minutes` of 0
+keeps the bot online for the entire window; otherwise it plays for that long, then
+rests for `break_minutes`. Both lengths are randomised by `jitter_pct` (max 90) on
+every cycle, so the rhythm never repeats exactly.
+
+```json
+{
+  "type": "set_active_hours",
+  "enabled": true,
+  "start_minute": 480,
+  "end_minute": 1380,
+  "session_minutes": 90,
+  "break_minutes": 20,
+  "jitter_pct": 30
 }
 ```
 
@@ -939,6 +971,7 @@ Fired when any delay value is changed — via the HTTP `set_delays` command or v
 | `update_required` | Client update required — bot stops permanently |
 | `maintenance` | Server under maintenance — retries after `maintenance_secs` |
 | `login_failed` | HTTP login chain gave up — bot stops. `status_detail` says why |
+| `resting` | Logged out by the active-hours schedule — returns on its own |
 
 The login chain (server_data, dashboard, GrowID validate) retries a failing step
 with a growing backoff — 5s, 10s, 20s, 40s, then 60s — and gives up after 6

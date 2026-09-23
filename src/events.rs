@@ -65,6 +65,8 @@ pub enum WsEvent {
     BotUsername { bot_id: u32, username: String },
     /// Bot auto-collect toggled.
     BotAutoCollect { bot_id: u32, enabled: bool },
+    /// Active-hours schedule changed.
+    BotActiveHours { bot_id: u32, enabled: bool, start_minute: u16, end_minute: u16, session_minutes: u32, break_minutes: u32, jitter_pct: u8 },
     /// Bot delays updated.
     BotDelays { bot_id: u32, place_ms: u64, walk_ms: u64, jitter_pct: u8, twofa_secs: u64, server_overload_secs: u64, too_many_logins_secs: u64, maintenance_secs: u64 },
 }

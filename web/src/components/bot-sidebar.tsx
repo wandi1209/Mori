@@ -18,6 +18,7 @@ const STATUS_COLOR: Record<BotStatus, string> = {
   too_many_logins: 'bg-purple-500',
   update_required: 'bg-gray-500',
   login_failed: 'bg-red-600',
+  resting: 'bg-slate-400',
   maintenance: 'bg-amber-500',
 }
 
@@ -30,6 +31,7 @@ const STATUS_LABEL: Record<BotStatus, string> = {
   too_many_logins: 'Too Many Logins',
   update_required: 'Update Required',
   login_failed: 'Login Failed',
+  resting: 'Resting',
   maintenance: 'Maintenance',
 }
 

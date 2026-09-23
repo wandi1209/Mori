@@ -144,7 +144,7 @@ The main bot object returned by `getBot()`.
 | `auto_collect` | boolean | r/w | Enable/disable automatic item collection |
 | `ignore_gems` | boolean | r/w | Skip gems (item ID 112) during auto-collect |
 | `ignore_essences` | boolean | r/w | Skip essences (IDs 5024/5026/5028/5030) during auto-collect |
-| `auto_leave_on_mod` | boolean | r/w | Leave world automatically when a moderator spawns |
+| `auto_leave_on_mod` | boolean | r/w | Leave world automatically when a moderator spawns (default: true) |
 | `auto_ban` | boolean | r/w | Send `/ban <name>` when any non-local player spawns |
 | `collect_interval` | number | r/w | Auto-collect tick interval in milliseconds (default: 500) |
 | `collect_range` | number | r/w | Auto-collect radius in tiles, 1–5 (default: 1). A client only collects what it touches — larger values pull drops from across the room without moving |
