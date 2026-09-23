@@ -250,19 +250,36 @@ end
 --- Plants one seed on every free plot, until the seeds run out.
 local function plant(crop)
   local free = emptyPlots()
-  local planted = 0
+  local planted, unreachable, refused = 0, 0, 0
   log(crop.name .. " plant: " .. #free .. " free plots, "
     .. inv(crop.seed_id) .. " seeds held")
 
   for _, plot in ipairs(free) do
-    if inv(crop.seed_id) <= 0 then return planted end
-    if not bot:isInWorld(CONFIG.world) then return planted end
+    if inv(crop.seed_id) <= 0 then break end
+    if not bot:isInWorld(CONFIG.world) then break end
 
-    if goTo(plot.x, plot.y) then
+    if not goTo(plot.x, plot.y) then
+      unreachable = unreachable + 1
+    else
       bot:place(plot.x, plot.y, crop.seed_id)
-      planted = planted + 1
       nap(CONFIG.action_delay_ms)
+
+      -- The server is free to ignore a placement — out of build range, no
+      -- access in that world, or a tile that is not what the snapshot said.
+      -- Counting what actually took keeps a silent refusal from looking like
+      -- a planted farm.
+      local tile = getTile(plot.x, plot.y)
+      if tile and tile.fg ~= 0 then
+        planted = planted + 1
+      else
+        refused = refused + 1
+      end
     end
+  end
+
+  if unreachable > 0 or refused > 0 then
+    log(crop.name .. " plant: " .. planted .. " planted, "
+      .. unreachable .. " unreachable, " .. refused .. " refused by the server")
   end
   return planted
 end
