@@ -18,6 +18,24 @@ world    = "YOURFARM",
 area     = { x1 = 10, y1 = 24, x2 = 89, y2 = 48 },
 ```
 
+### Which tiles get planted
+
+`area` is an inclusive rectangle of tile coordinates, and by default every empty
+tile inside it is planted — the script has no notion of rows, it plants whatever
+is air:
+
+```lua
+area     = { x1 = 10, y1 = 24, x2 = 89, y2 = 48 },   -- columns 10-89, rows 24-48
+row_step   = 1,   -- 2 = plant every second row, leaving walkways alone
+row_offset = 0,   -- shifts which rows those are, counted from y1
+```
+
+On a layered farm — solid rows with air rows between them — the solid rows are
+skipped anyway, since they are not empty. `row_step` is for when the air itself
+alternates between planting rows and walkways: with `row_step = 2` only rows
+`y1`, `y1+2`, `y1+4` … are used. Keep `area` tight around the farm; anything empty
+inside it, including the space around a door or sign, counts as a plot.
+
 Nothing else changes between crops. Ids, growth time and how many hits a block
 takes are read from `items.dat` at startup, so the name is the only crop-specific
 value:

@@ -29,6 +29,12 @@ local CONFIG = {
   world_id = "",                   -- door id, "" for the main entrance
   area     = { x1 = 10, y1 = 24, x2 = 89, y2 = 48 },  -- plots to farm, inclusive
 
+  -- Layered farms leave walkways between planting rows. With row_step = 2 only
+  -- every second row inside the area is planted, counted from y1 + row_offset;
+  -- row_step = 1 plants every empty tile in the box.
+  row_step   = 1,
+  row_offset = 0,
+
   dump_world    = "YOURSTORE",  -- where surplus seeds are dropped
   dump_world_id = "",
   seed_dump_at  = 50,           -- surplus seeds that trigger a dump run
@@ -140,8 +146,16 @@ local function readyTrees()
   return plots(function(t) return t:canHarvest() end)
 end
 
+--- Rows the farm plants on. Everything else inside the area is left alone, which
+--- is what keeps walkways walkable on a layered farm.
+local function isPlantingRow(y)
+  local step = CONFIG.row_step or 1
+  if step <= 1 then return true end
+  return (y - CONFIG.area.y1 - (CONFIG.row_offset or 0)) % step == 0
+end
+
 local function emptyPlots()
-  return plots(function(t) return t.fg == 0 end)
+  return plots(function(t) return t.fg == 0 and isPlantingRow(t.y) end)
 end
 
 --- Punches a tile until it clears, or until the hit budget runs out. Used for

@@ -62,7 +62,8 @@ mod farm_script_tests {
         -- 6 plots: 3 ready trees, 3 empty
         local tiles = {}
         for i = 1, 6 do
-          tiles[i] = { x = 10 + i, y = 24, fg = (i <= 3) and 2019 or 0,
+          -- rows 24 and 25, so a row_step of 2 would halve the plantable set
+          tiles[i] = { x = 10 + i, y = 24 + (i % 2), fg = (i <= 3) and 2019 or 0,
                        ready = i <= 3 }
           tiles[i].canHarvest = function(self) return self.ready end
         end
@@ -123,6 +124,42 @@ mod farm_script_tests {
           if ms >= 60000 then error("CYCLE_DONE") end   -- the end-of-cycle wait
         end
     "#;
+
+    /// Loads the farm script into a fresh stub world, optionally patched, and runs
+    /// it until the end-of-cycle sleep aborts it. Returns the stub's action log.
+    fn run_script(patch: &[(&str, &str)]) -> (mlua::Lua, Vec<String>) {
+        let lua = mlua::Lua::new_with(
+            mlua::StdLib::TABLE | mlua::StdLib::STRING | mlua::StdLib::MATH | mlua::StdLib::IO,
+            mlua::LuaOptions::default(),
+        )
+        .expect("lua init failed");
+        lua.load(STUBS).exec().expect("stub world failed to load");
+
+        let mut src = std::fs::read_to_string("scripts/farm.lua")
+            .expect("scripts/farm.lua missing")
+            .replace("\"YOURFARM\"", "\"SIMWORLD\"");
+        for (from, to) in patch {
+            assert!(src.contains(from), "patch target missing: {from}");
+            src = src.replace(from, to);
+        }
+
+        let err = lua.load(&src).exec().unwrap_err().to_string();
+        assert!(err.contains("CYCLE_DONE"), "script stopped early: {err}");
+
+        let log: Vec<String> = lua.load("return SIM.log").eval().unwrap();
+        (lua, log)
+    }
+
+    #[test]
+    fn row_step_skips_the_walkways() {
+        // Six plots spread over rows 24 and 25; three hold trees, three are empty.
+        let (_, every_row) = run_script(&[]);
+        let (_, alternate) = run_script(&[("row_step   = 1,", "row_step   = 2,")]);
+
+        let planted = |log: &[String]| log.iter().filter(|l| l.as_str() == "plant").count();
+        assert!(planted(&every_row) > planted(&alternate));
+        assert!(planted(&alternate) > 0, "the planting row should still be used");
+    }
 
     #[test]
     fn farm_script_completes_a_cycle() {
