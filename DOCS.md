@@ -360,7 +360,10 @@ Configure action delays. `place_ms` and `walk_ms` are in milliseconds; `jitter_p
 ```
 
 #### `set_auto_collect`
-Enable or disable automatic collection of nearby dropped items.
+Enable or disable automatic collection of nearby dropped items. The radius defaults
+to 1 tile, which is what a client produces — it collects what the character touches.
+Raising it (`set_collect_config`, or `collect_range` in Lua, max 5) pulls drops in
+from across the room while the bot stands still.
 ```json
 { "type": "set_auto_collect", "enabled": true }
 ```
