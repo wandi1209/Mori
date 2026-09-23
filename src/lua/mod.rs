@@ -125,6 +125,16 @@ mod farm_script_tests {
         end
     "#;
 
+    /// Overwrites one `key = value,` line of the script's CONFIG block. The block is
+    /// meant to be edited for each farm, so tests set what they need rather than
+    /// depending on the values the file happens to ship with.
+    fn set_config(src: &str, key: &str, value: &str) -> String {
+        let pattern = format!(r"(?m)^(\s*{key}\s*=\s*)(\{{[^}}]*\}}|[^,\n]*),");
+        let re = regex::Regex::new(&pattern).expect("bad config pattern");
+        assert!(re.is_match(src), "config key not found: {key}");
+        re.replace(src, format!("${{1}}{value},")).into_owned()
+    }
+
     /// Loads the farm script into a fresh stub world, optionally patched, and runs
     /// it until the end-of-cycle sleep aborts it. Returns the stub's action log.
     fn run_script(patch: &[(&str, &str)]) -> (mlua::Lua, Vec<String>) {
@@ -136,11 +146,17 @@ mod farm_script_tests {
         lua.load(STUBS).exec().expect("stub world failed to load");
 
         let mut src = std::fs::read_to_string("scripts/farm.lua")
-            .expect("scripts/farm.lua missing")
-            .replace("\"YOURFARM\"", "\"SIMWORLD\"");
-        for (from, to) in patch {
-            assert!(src.contains(from), "patch target missing: {from}");
-            src = src.replace(from, to);
+            .expect("scripts/farm.lua missing");
+
+        // Point the script at the stub world, whatever the file is configured for.
+        src = set_config(&src, "world", "\"SIMWORLD\"");
+        src = set_config(&src, "world_id", "\"\"");
+        src = set_config(&src, "dump_world", "\"YOURSTORE\"");
+        src = set_config(&src, "area", "{ x1 = 0, y1 = 0, x2 = 99, y2 = 59 }");
+        src = set_config(&src, "row_step", "1");
+
+        for (key, value) in patch {
+            src = set_config(&src, key, value);
         }
 
         let err = lua.load(&src).exec().unwrap_err().to_string();
@@ -152,7 +168,7 @@ mod farm_script_tests {
 
     #[test]
     fn seeds_can_be_stored_in_the_farm_world() {
-        let (lua, log) = run_script(&[(r#"dump_world    = "YOURSTORE","#, r#"dump_world    = "","#)]);
+        let (lua, log) = run_script(&[("dump_world", "\"\"")]);
 
         assert!(
             log.iter().any(|l| l.starts_with("drop:")),
@@ -170,7 +186,7 @@ mod farm_script_tests {
     fn row_step_skips_the_walkways() {
         // Six plots spread over rows 24 and 25; three hold trees, three are empty.
         let (_, every_row) = run_script(&[]);
-        let (_, alternate) = run_script(&[("row_step   = 1,", "row_step   = 2,")]);
+        let (_, alternate) = run_script(&[("row_step", "2")]);
 
         let planted = |log: &[String]| log.iter().filter(|l| l.as_str() == "plant").count();
         assert!(planted(&every_row) > planted(&alternate));
@@ -179,21 +195,7 @@ mod farm_script_tests {
 
     #[test]
     fn farm_script_completes_a_cycle() {
-        let lua = mlua::Lua::new_with(
-            mlua::StdLib::TABLE | mlua::StdLib::STRING | mlua::StdLib::MATH | mlua::StdLib::IO,
-            mlua::LuaOptions::default(),
-        )
-        .expect("lua init failed");
-        lua.load(STUBS).exec().expect("stub world failed to load");
-
-        let src = std::fs::read_to_string("scripts/farm.lua")
-            .expect("scripts/farm.lua missing")
-            .replace("\"YOURFARM\"", "\"SIMWORLD\"");
-
-        let err = lua.load(&src).exec().unwrap_err().to_string();
-        assert!(err.contains("CYCLE_DONE"), "script stopped early: {err}");
-
-        let log: Vec<String> = lua.load("return SIM.log").eval().unwrap();
+        let (lua, log) = run_script(&[]);
         let printed: Vec<String> = lua.load("return SIM.printed").eval().unwrap();
         let blocks: i64 = lua.load("return SIM.blocks").eval().unwrap();
         let seeds: i64 = lua.load("return SIM.seeds").eval().unwrap();
