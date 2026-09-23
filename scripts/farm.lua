@@ -1,10 +1,10 @@
 -- Crop farm loop, for any block that grows on a tree.
 --
---   harvest ready trees
---     -> when the block stack fills, place and break blocks back into seeds
+--   harvest until the block stack fills
+--     -> break those blocks back into seeds
 --       -> plant every free plot
---         -> dump surplus seeds in another world
---           -> harvest again as soon as anything is ripe, poll while nothing is
+--         -> go round again while trees are still ripe
+--           -> dump surplus seeds, then poll until something ripens
 --
 -- One crop per bot: run this script on the account that farms that block, with
 -- `crop` set to its name. A second block means a second account running the same
@@ -410,56 +410,51 @@ local function dumpSeeds(crop)
 end
 
 local function runCycle(crop)
-  if not goToWorld(CONFIG.world, CONFIG.world_id) then return end
+  if not goToWorld(CONFIG.world, CONFIG.world_id) then return false end
   bot:setAutoCollect(true)
 
   -- Everything needed to answer "does this farm pay for itself": seeds returned
   -- per tree has to reach 1, or the seed stock shrinks every cycle no matter how
   -- many plots there are.
   local seeds_before = inv(crop.seed_id)
+  local harvested, broken_from, planted = 0, 0, 0
+  local stuck = false
 
-  -- Harvesting stops when the block stack hits 200, so a farm that yields more
-  -- than that in one go needs several passes: harvest what fits, turn it into
-  -- seeds, come back for the rest.
-  local harvested = 0
-  local broken_from = 0
+  -- One pass is harvest, break, plant. Harvesting stops at the 200-block stack
+  -- cap, so a farm that yields more than that takes several passes: empty the
+  -- stack into seeds, put those seeds in the ground, then go back for the trees
+  -- that are still standing.
   for pass = 1, CONFIG.max_passes do
     local picked = harvest(crop)
-    if picked == 0 then break end
-
     harvested = harvested + picked
+
     broken_from = broken_from + inv(crop.block_id)
     breakBlocks(crop)
+    planted = planted + plant(crop)
 
-    if #readyTrees() == 0 then break end
+    -- Blocks still at the cap means breaking did not drain them, and harvesting
+    -- cannot resume until it does. Going round again would only walk the farm.
+    if not getInventory():canCollect(crop.block_id) then
+      log(crop.name .. " break: stack still full (" .. inv(crop.block_id)
+        .. " blocks) - check break_spot, it needs a reachable empty tile")
+      stuck = true
+      break
+    end
+
+    if picked == 0 or #readyTrees() == 0 then break end
     log(crop.name .. " pass " .. pass .. " done, more trees are still ready")
   end
 
-  local seeds_after_break = inv(crop.seed_id)
-
-  -- Blocks still at the cap means the break phase could not drain them, and
-  -- harvesting cannot resume until it does. Saying so beats looping on a farm
-  -- full of ripe trees the bot has no room for.
-  local stuck = not getInventory():canCollect(crop.block_id)
-  if stuck then
-    log(crop.name .. " break: stack still full (" .. inv(crop.block_id)
-      .. " blocks) - check break_spot, it needs a reachable empty tile")
-  end
-
-  local planted = plant(crop)
   dumpSeeds(crop)
 
-  local seeds_gained = seeds_after_break - seeds_before
-
-  if stuck then
-    return false
-  end
+  if stuck then return false end
 
   if harvested == 0 then
     log(string.format("%s cycle: nothing ready, %d replanted", crop.name, planted))
     return false
   end
 
+  local seeds_gained = inv(crop.seed_id) - seeds_before + planted
   local per_tree = seeds_gained / harvested
   log(string.format(
     "%s cycle: %d trees -> %d blocks -> %d seeds (%.2f seeds/tree), %d replanted%s",

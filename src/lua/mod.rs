@@ -271,8 +271,12 @@ mod farm_script_tests {
 
     #[test]
     fn break_spot_keeps_the_bot_on_one_tile() {
-        // x 14, y 24 is one of the stub's empty plots.
-        let (_, log) = run_script(&[("break_spot", "{ x = 14, y = 24 }")]);
+        // x 14, y 24 is an empty plot of the stub's, kept outside the farm area
+        // so planting never claims it — which is what the README asks for too.
+        let (_, log) = run_script(&[
+            ("area", "{ x1 = 11, y1 = 24, x2 = 13, y2 = 25 }"),
+            ("break_spot", "{ x = 14, y = 24 }"),
+        ]);
 
         let places: Vec<&String> = log.iter().filter(|l| l.starts_with("place:")).collect();
         assert!(places.len() > 1, "blocks should have been placed");

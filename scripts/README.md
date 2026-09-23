@@ -10,7 +10,7 @@ script never overwrites your farm's numbers.
 | Script | What it does |
 |--------|--------------|
 | `area-probe.lua` | Read-only. Prints how many empty plots, ready trees and solid tiles fall inside a candidate `area`, and which rows hold plots at all — for checking the numbers that go into `farm.lua` instead of guessing them. |
-| `farm.lua` | Full crop cycle for one tree-grown block: harvest ready trees, break blocks back into seeds once the stack fills, replant every free plot, dump surplus seeds, then go again as soon as anything is ripe. |
+| `farm.lua` | Full crop cycle for one tree-grown block. Each pass harvests until the block stack fills, breaks those blocks back into seeds, and plants every free plot; passes repeat while trees are still ripe. Surplus seeds are dumped at the end, then it polls until something ripens. |
 
 ## Configuring `farm.lua`
 
