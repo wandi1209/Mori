@@ -117,6 +117,17 @@ then — those are picked up immediately instead of after another timer.
 Going again requires that the cycle harvested something, so a ready tree the bot
 cannot reach makes it wait rather than spin.
 
+### Pace
+
+The bot paces itself: every punch and placement is followed by `place_ms` and
+every tile walked by `walk_ms`, both randomised by the jitter percentage. Those
+live in the bot's Config tab, not in the script, and they are what to change when
+a farm is too slow or too obviously mechanical.
+
+`action_delay_ms` in the script is an extra pause on top of those, and defaults
+to 0 for that reason. At the stock 500ms delays, a tree that takes eight punches
+costs about four seconds and crossing a 100-wide world about fifty.
+
 ### Sizing the farm
 
 Every cycle ends with a line that answers whether the farm pays for itself:

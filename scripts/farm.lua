@@ -27,7 +27,7 @@ local CONFIG = {
   crop     = "Dark Yellow Block",  -- exact items.dat name; "Dark Purple Block" etc
   world    = "YOURFARM",           -- world the trees live in
   world_id = "",                   -- door id, "" for the main entrance
-  area     = { x1 = 10, y1 = 24, x2 = 89, y2 = 48 },  -- plots to farm, inclusive
+  area     = { x1 = 1, y1 = 1, x2 = 98, y2 = 3 },  -- plots to farm, inclusive
 
   -- Layered farms leave walkways between planting rows. With row_step = 2 only
   -- every second row inside the area is planted, counted from y1 + row_offset;
@@ -40,7 +40,7 @@ local CONFIG = {
   -- to stand clear of the pile for auto-collect not to pick it straight back up.
   dump_world    = "YOURSTORE",
   dump_world_id = "",
-  dump_spot     = { x = 5, y = 24 },
+  dump_spot     = { x = 54, y = 21 },
   seed_dump_at  = 50,           -- surplus seeds that trigger a dump run
   seed_keep     = 10,           -- seeds kept back after a dump
 
@@ -49,7 +49,7 @@ local CONFIG = {
   -- of a few hundred blocks. Keep it out of `area`: a block that survives its
   -- hit budget stays on the tile, and inside the farm that plot is then never
   -- planted again. Set to nil to break on random empty plots instead.
-  break_spot = { x = 6, y = 24 },
+  break_spot = { x = 2, y = 9 },
 
   -- Guard rails.
   max_passes       = 8,     -- harvest+break rounds per cycle; a farm bigger than
@@ -57,7 +57,10 @@ local CONFIG = {
   max_break_rounds = 400,   -- place-and-break attempts per cycle
   extra_hits       = 4,     -- punches on top of the item's own strength
   step_timeout_ms  = 8000,  -- giving up on a walk or a warp
-  action_delay_ms  = 250,   -- pause after each punch or placement
+  -- Extra pause after each punch or placement. The bot already waits place_ms
+  -- after every one of them, with its own jitter, so this is on top of that —
+  -- leave it at 0 and tune the delays in the bot's Config tab instead.
+  action_delay_ms  = 0,
   cycle_jitter_s   = { 30, 300 }, -- random tail added to every wait
   idle_recheck_s   = 300,   -- how long to wait before looking again when nothing
                             -- is ready. The loop never sleeps out a growth timer:
