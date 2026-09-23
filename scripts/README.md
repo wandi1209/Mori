@@ -9,7 +9,7 @@ script never overwrites your farm's numbers.
 
 | Script | What it does |
 |--------|--------------|
-| `farm.lua` | Full crop cycle for one tree-grown block: harvest ready trees, break blocks back into seeds once the stack fills, replant every free plot, dump surplus seeds in a storage world, then wait out the growth timer and repeat. |
+| `farm.lua` | Full crop cycle for one tree-grown block: harvest ready trees, break blocks back into seeds once the stack fills, replant every free plot, dump surplus seeds, then go again as soon as anything is ripe. |
 
 ## Configuring `farm.lua`
 
@@ -99,18 +99,22 @@ storage world.
 
 ### When nothing is ready
 
-A cycle that finds no ready trees still replants whatever plots are free, then
-waits `idle_recheck_s` (five minutes by default) instead of a full growth timer:
+The loop never sleeps out a growth timer. After a cycle it looks at the farm
+again: anything ripe and it goes straight into the next one, otherwise it waits
+`idle_recheck_s` (five minutes by default) and looks again.
 
 ```
 Dark Yellow Block cycle: nothing ready, 0 replanted
-sleeping 431s
+nothing ripe, checking again in 431s
 ```
 
-Waiting the whole timer there would be wrong — a cycle that starts halfway
-through one would sit out almost two growth periods before catching up. The long
-wait is only used after an actual harvest, which is what puts the loop in step
-with the trees.
+A fixed growth-timer sleep would be wrong twice over. Trees planted at different
+moments ripen at different moments, so a single timer leaves some standing. And a
+cycle that ends early on the 200-block stack cap has ripe trees waiting right
+then — those are picked up immediately instead of after another timer.
+
+Going again requires that the cycle harvested something, so a ready tree the bot
+cannot reach makes it wait rather than spin.
 
 ### Sizing the farm
 

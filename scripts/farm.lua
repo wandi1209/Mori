@@ -4,7 +4,7 @@
 --     -> when the block stack fills, place and break blocks back into seeds
 --       -> plant every free plot
 --         -> dump surplus seeds in another world
---           -> wait out the growth timer and start over
+--           -> harvest again as soon as anything is ripe, poll while nothing is
 --
 -- One crop per bot: run this script on the account that farms that block, with
 -- `crop` set to its name. A second block means a second account running the same
@@ -59,9 +59,10 @@ local CONFIG = {
   step_timeout_ms  = 8000,  -- giving up on a walk or a warp
   action_delay_ms  = 250,   -- pause after each punch or placement
   cycle_jitter_s   = { 30, 300 }, -- random tail added to every wait
-  idle_recheck_s   = 300,   -- wait before looking again when nothing was ready,
-                            -- so a cycle started mid-growth does not sit out a
-                            -- full timer for trees that are minutes away
+  idle_recheck_s   = 300,   -- how long to wait before looking again when nothing
+                            -- is ready. The loop never sleeps out a growth timer:
+                            -- trees planted at different moments ripen at
+                            -- different moments, so it polls instead
 }
 
 -- ── helpers ────────────────────────────────────────────────────────────────
@@ -379,12 +380,21 @@ math.randomseed(crop.block_id + inv(crop.seed_id) + 1)
 while true do
   local harvested_something = runCycle(crop)
 
-  -- A full growth timer only makes sense after a harvest. Finding nothing ready
-  -- means this cycle started somewhere in the middle of one, so look again
-  -- sooner rather than sitting out a whole timer for trees that are close.
-  local base = harvested_something and crop.grow or CONFIG.idle_recheck_s
-  local jitter = math.random(CONFIG.cycle_jitter_s[1], CONFIG.cycle_jitter_s[2])
-  local wait = base + jitter
-  log("sleeping " .. math.floor(wait) .. "s")
-  nap(wait * 1000)
+  -- Go straight into the next cycle when the farm has more ready trees: a stack
+  -- cap can end a cycle early, and trees planted at different moments ripen at
+  -- different moments, so a fixed growth-timer sleep would leave them standing.
+  -- Requiring that this cycle harvested something keeps an unreachable ready
+  -- tree from spinning the loop.
+  local more_ready = harvested_something
+    and bot:isInWorld(CONFIG.world)
+    and #readyTrees() > 0
+
+  if more_ready then
+    log("more trees are ready, going again")
+  else
+    local jitter = math.random(CONFIG.cycle_jitter_s[1], CONFIG.cycle_jitter_s[2])
+    local wait = CONFIG.idle_recheck_s + jitter
+    log("nothing ripe, checking again in " .. math.floor(wait) .. "s")
+    nap(wait * 1000)
+  end
 end

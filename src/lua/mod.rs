@@ -215,8 +215,13 @@ mod farm_script_tests {
         );
         let slept: u64 = printed
             .iter()
-            .find_map(|l| l.strip_prefix("[farm] sleeping ")?.strip_suffix("s")?.parse().ok())
-            .expect("no sleep line");
+            .find_map(|l| {
+                l.strip_prefix("[farm] nothing ripe, checking again in ")?
+                    .strip_suffix("s")?
+                    .parse()
+                    .ok()
+            })
+            .expect("no wait line");
         assert!(
             (120..=420).contains(&slept),
             "should wait the idle interval plus jitter, waited {slept}s"
