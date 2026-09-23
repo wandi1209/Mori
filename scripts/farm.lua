@@ -52,6 +52,9 @@ local CONFIG = {
   break_spot = { x = 2, y = 9 },
 
   -- Guard rails.
+  stack_cap        = 200,   -- a stack of one item never goes past this in-game
+  stall_limit      = 5,     -- harvested trees in a row that add no blocks before
+                            -- the script decides the drops are not arriving
   max_passes       = 8,     -- harvest+break rounds per cycle; a farm bigger than
                             -- the 200-block stack cap needs more than one
   max_break_rounds = 400,   -- place-and-break attempts per cycle
@@ -240,16 +243,43 @@ local function harvest(crop)
   log(crop.name .. " harvest: " .. #trees .. " ready, "
     .. inv(crop.block_id) .. " blocks held")
 
+  local stalled = 0
+
   for _, plot in ipairs(trees) do
-    if not getInventory():canCollect(crop.block_id) then
-      log(crop.name .. " harvest: stack full, switching to break phase")
+    local held = inv(crop.block_id)
+    local bag = getInventory()
+
+    if held >= CONFIG.stack_cap or not bag:canCollect(crop.block_id) then
+      log(crop.name .. " harvest: stack full at " .. held
+        .. ", switching to break phase")
       return picked
     end
+
+    -- A full backpack does not stop a drop from falling, it stops it from being
+    -- picked up: the count never moves and harvesting would run the farm down
+    -- for nothing. Watch for progress rather than trusting one flag.
+    if bag.itemcount >= bag.slotcount and held == 0 then
+      log(crop.name .. " harvest: backpack is out of slots, nothing can be picked up")
+      return picked
+    end
+
     if not bot:isInWorld(CONFIG.world) then return picked end
 
     if goNextTo(plot.x, plot.y) then
       punchUntilClear(crop, plot.x, plot.y)
       picked = picked + 1
+
+      if inv(crop.block_id) <= held then
+        stalled = stalled + 1
+        if stalled >= CONFIG.stall_limit then
+          log(crop.name .. " harvest: " .. stalled
+            .. " trees in a row added no blocks, stopping - the drops are not"
+            .. " reaching the bag (full backpack, or auto-collect is off)")
+          return picked
+        end
+      else
+        stalled = 0
+      end
     end
   end
   return picked
@@ -406,10 +436,24 @@ local function runCycle(crop)
   end
 
   local seeds_after_break = inv(crop.seed_id)
+
+  -- Blocks still at the cap means the break phase could not drain them, and
+  -- harvesting cannot resume until it does. Saying so beats looping on a farm
+  -- full of ripe trees the bot has no room for.
+  local stuck = not getInventory():canCollect(crop.block_id)
+  if stuck then
+    log(crop.name .. " break: stack still full (" .. inv(crop.block_id)
+      .. " blocks) - check break_spot, it needs a reachable empty tile")
+  end
+
   local planted = plant(crop)
   dumpSeeds(crop)
 
   local seeds_gained = seeds_after_break - seeds_before
+
+  if stuck then
+    return false
+  end
 
   if harvested == 0 then
     log(string.format("%s cycle: nothing ready, %d replanted", crop.name, planted))

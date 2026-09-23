@@ -49,7 +49,7 @@ mod farm_script_tests {
 
     const STUBS: &str = r#"
         local S = { blocks = 0, seeds = 0, world = "", sleeps = 0, log = {}, printed = {},
-                    x = 0, y = 0 }
+                    x = 0, y = 0, slots = 20 }
         _G.SIM = S
 
         local ITEMS = {
@@ -75,7 +75,12 @@ mod farm_script_tests {
         function getTile(x, y) return tileAt(x, y) end
 
         function getInventory()
+          local used = 0
+          if S.blocks > 0 then used = used + 1 end
+          if S.seeds > 0 then used = used + 1 end
           return {
+            itemcount = used,
+            slotcount = S.slots or 20,
             findItem = function(_, id)
               if id == 2018 then return S.blocks elseif id == 2019 then return S.seeds end
               return 0
@@ -102,7 +107,7 @@ mod farm_script_tests {
           if not t then return end
           if t.fg == 2019 and t.ready then            -- harvest a tree
             t.fg, t.ready = 0, false
-            S.blocks = S.blocks + 60
+            S.blocks = S.blocks + 100
             S.log[#S.log+1] = "harvest"
           elseif t.fg == 2018 then                    -- break a placed block
             t.fg = 0
@@ -229,6 +234,19 @@ mod farm_script_tests {
         assert!(
             (120..=420).contains(&slept),
             "should wait the idle interval plus jitter, waited {slept}s"
+        );
+    }
+
+    #[test]
+    fn a_stack_that_will_not_drain_is_reported() {
+        // No break rounds at all: the blocks the cycle harvested stay in the bag,
+        // so harvesting cannot resume and the script has to say why.
+        let (lua, _) = run_script(&[("max_break_rounds", "0")]);
+        let printed: Vec<String> = lua.load("return SIM.printed").eval().unwrap();
+
+        assert!(
+            printed.iter().any(|l| l.contains("stack still full")),
+            "a stack that cannot be drained should say so: {printed:?}"
         );
     }
 
