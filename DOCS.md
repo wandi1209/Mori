@@ -212,7 +212,14 @@ the later game login present one machine.
 ```
 
 `account` is a label of your choosing; it is the key the device identity is stored
-under in `data/devices.json`, and the same label must be used when spawning.
+under in `data/devices.json`.
+
+**Use the same label for both calls, and keep using it for that account.** The
+token the browser hands back belongs to the dashboard request that produced it,
+device values included. Spawning under a different label presents that token with
+a different rid, mac and wk, and the game server closes the connection without
+sending a reason — the bot logs a ServerHello, its login packet, and an immediate
+disconnect. Every new label is a new machine as far as Growtopia is concerned.
 
 **Response**
 ```json

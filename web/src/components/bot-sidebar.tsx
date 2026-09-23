@@ -154,13 +154,30 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
         </TabsContent>
 
         <TabsContent value="google" className="flex flex-col gap-1.5 mt-1.5">
-          <Input
-            placeholder="Account label"
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            className="h-7 text-xs"
-            required={method === 'google'}
-          />
+          <div className="flex gap-1.5">
+            <Input
+              placeholder="Account label"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              className="h-7 text-xs"
+              required={method === 'google'}
+              // Locked once a link exists: the token the browser returns only
+              // works with the device values this label was signed in with.
+              disabled={googleUrl !== ''}
+            />
+            {googleUrl && (
+              <button
+                type="button"
+                className="h-7 px-2 rounded-md border border-border text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setGoogleUrl('')
+                  setGoogleToken('')
+                }}
+              >
+                Change
+              </button>
+            )}
+          </div>
           <button
             type="button"
             className="h-7 rounded-md border border-border text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
@@ -201,7 +218,9 @@ function AddBotForm({ onDone }: { onDone: () => void }) {
             required={method === 'google'}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Sign in with Google in the browser. The page it ends on shows
+            One label per account, kept the same every time — it picks the device
+            identity the token is tied to. Sign in with Google in the browser. The
+            page it ends on shows
             <span className="font-mono"> {'{"status":"success"...'}</span> — paste
             that whole response, or just its token. Device values come from this
             account's stored identity.

@@ -220,6 +220,25 @@ struct GoogleUrlResponse {
     url: String,
 }
 
+/// Account labels a sign-in link has been issued for since start-up. A token is
+/// bound to the device values of the dashboard request that produced it, so
+/// spawning under a different label presents the token with the wrong machine and
+/// the game server drops the connection without a word.
+static GOOGLE_LINKS_ISSUED: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+fn remember_google_link(account: &str) {
+    let mut guard = GOOGLE_LINKS_ISSUED.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(account.to_string());
+}
+
+fn google_link_was_issued_for(account: &str) -> bool {
+    let guard = GOOGLE_LINKS_ISSUED.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().is_some_and(|set| set.contains(account))
+}
+
 /// Returns the Google sign-in URL for an account, to be opened in a real browser.
 ///
 /// The request that produces it has to carry the same device values the bot will
@@ -239,6 +258,7 @@ async fn google_login_url(
         req.proxy_password,
     );
     let account = req.account.trim().to_string();
+    let label_for_memo = account.clone();
 
     let links = tokio::task::spawn_blocking(move || {
         println!("[Google] fetching sign-in link for {account}");
@@ -272,6 +292,7 @@ async fn google_login_url(
     match links.google {
         Some(url) => {
             println!("[Google] sign-in link ready");
+            remember_google_link(&label_for_memo);
             Ok(Json(GoogleUrlResponse { url }))
         }
         None => {
@@ -332,6 +353,14 @@ async fn spawn_google_bot(
             StatusCode::BAD_REQUEST,
             "account and token are required".into(),
         ));
+    }
+
+    if !google_link_was_issued_for(&account) {
+        println!(
+            "[Google] warning: no sign-in link was issued for {account:?} in this run. \
+             A token only works with the device values of the request that produced it, \
+             so make sure this is the same label you fetched the link with."
+        );
     }
 
     let proxy = socks5_from_parts(
