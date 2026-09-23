@@ -20,6 +20,8 @@ pub enum BotStatus {
     UpdateRequired,
     /// Server is under maintenance. Retrying after 600 s.
     Maintenance,
+    /// The HTTP login chain gave up. `BotState::status_detail` says why. Bot stopped.
+    LoginFailed,
 }
 
 impl fmt::Display for BotStatus {
@@ -33,6 +35,7 @@ impl fmt::Display for BotStatus {
             BotStatus::TooManyLogins    => write!(f, "too_many_logins"),
             BotStatus::UpdateRequired   => write!(f, "update_required"),
             BotStatus::Maintenance      => write!(f, "maintenance"),
+            BotStatus::LoginFailed      => write!(f, "login_failed"),
         }
     }
 }
@@ -121,6 +124,9 @@ impl Default for BotDelays {
 #[derive(Clone, Serialize)]
 pub struct BotState {
     pub status:          BotStatus,
+    /// Why the bot is in its current status, when there is something to say —
+    /// currently the reason a login was abandoned.
+    pub status_detail:   Option<String>,
     pub username:        String,
     pub mac:             String,
     pub world_name:      String,
@@ -166,6 +172,7 @@ impl Default for BotState {
     fn default() -> Self {
         Self {
             status: BotStatus::default(),
+            status_detail: None,
             username: String::new(),
             mac: String::new(),
             world_name: String::new(),

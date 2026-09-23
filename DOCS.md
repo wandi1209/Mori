@@ -205,6 +205,7 @@ Returns the full state of a bot.
 ```json
 {
   "status": "in_game",
+  "status_detail": null,
   "world_name": "string",
   "pos_x": 0.0,
   "pos_y": 0.0,
@@ -928,6 +929,12 @@ Fired when any delay value is changed — via the HTTP `set_delays` command or v
 | `too_many_logins` | Too many concurrent logins — retries after `too_many_logins_secs` |
 | `update_required` | Client update required — bot stops permanently |
 | `maintenance` | Server under maintenance — retries after `maintenance_secs` |
+| `login_failed` | HTTP login chain gave up — bot stops. `status_detail` says why |
+
+The login chain (server_data, dashboard, GrowID validate) retries a failing step
+with a growing backoff — 5s, 10s, 20s, 40s, then 60s — and gives up after 6
+attempts. Wrong credentials and an exhausted attempt quota are not retried at all,
+since waiting cannot fix either. Whatever ended it lands in `status_detail`.
 
 ### Coordinates
 

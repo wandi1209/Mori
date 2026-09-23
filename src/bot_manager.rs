@@ -61,7 +61,10 @@ impl BotManager {
 
         std::thread::spawn(move || {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut bot = crate::bot::Bot::new(&uname, &pass, proxy, state_clone, cmd_rx, items_dat, id, Some(ws_tx_clone));
+                let Some(mut bot) = crate::bot::Bot::new(&uname, &pass, proxy, state_clone, cmd_rx, items_dat, id, Some(ws_tx_clone)) else {
+                    println!("[Bot:{id}] Login failed, not starting.");
+                    return;
+                };
                 bot.run(stop_clone);
             })) {
                 Ok(_)  => println!("[Bot:{id}] Stopped."),
@@ -94,7 +97,10 @@ impl BotManager {
 
         std::thread::spawn(move || {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let mut bot = crate::bot::Bot::new_ltoken(&ltoken_str, proxy, state_clone, cmd_rx, items_dat, id, Some(ws_tx_clone));
+                let Some(mut bot) = crate::bot::Bot::new_ltoken(&ltoken_str, proxy, state_clone, cmd_rx, items_dat, id, Some(ws_tx_clone)) else {
+                    println!("[Bot:{id}] Login failed, not starting.");
+                    return;
+                };
                 bot.run(stop_clone);
             })) {
                 Ok(_)  => println!("[Bot:{id}] Stopped."),

@@ -56,12 +56,14 @@ export type BotStatus =
   | "server_overloaded"
   | "too_many_logins"
   | "update_required"
-  | "maintenance";
+  | "maintenance"
+  | "login_failed";
 
 export interface BotSummary {
   id: number;
   username: string;
   status: BotStatus;
+  status_detail: string | null;
   world: string;
   pos_x: number;
   pos_y: number;
@@ -94,6 +96,7 @@ export interface InventoryItem {
 
 export interface BotState {
   status: BotStatus;
+  status_detail: string | null;
   world_name: string;
   pos_x: number;
   pos_y: number;

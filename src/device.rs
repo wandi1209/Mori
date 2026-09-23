@@ -61,6 +61,10 @@ pub struct DeviceIdentity {
     pub fz: i64,
     #[serde(default = "default_zf")]
     pub zf: i64,
+    /// Total playtime in seconds, as last reported by the server's Track packet.
+    /// Login payloads used to send 0 here while the server knew the real figure.
+    #[serde(default)]
+    pub total_playtime: u64,
 }
 
 fn default_country() -> String {
@@ -111,6 +115,7 @@ impl DeviceIdentity {
             cbits: default_cbits(),
             fz: default_fz(),
             zf: default_zf(),
+            total_playtime: 0,
         }
     }
 }
@@ -162,6 +167,22 @@ fn resolve(
         store.insert(key.to_string(), identity.clone());
     }
     (identity, dirty)
+}
+
+/// Records the playtime the server reported for `key`. No-op when it is not larger
+/// than what is already stored, so a truncated or missing figure cannot walk it back.
+pub fn store_playtime(key: &str, seconds: u64) {
+    let _guard = FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut store = read_store();
+    let Some(entry) = store.get_mut(key) else {
+        return;
+    };
+    if entry.total_playtime >= seconds {
+        return;
+    }
+    entry.total_playtime = seconds;
+    write_store(&store);
 }
 
 fn read_store() -> BTreeMap<String, DeviceIdentity> {
@@ -268,6 +289,17 @@ mod tests {
         assert_eq!(id.rid.len(), 32);
         assert_eq!(id.wk.len(), 32);
         assert_eq!(id.hash2_seed.len(), 16);
+    }
+
+    #[test]
+    fn a_stored_playtime_survives_a_reload() {
+        let mut store = BTreeMap::new();
+        let (_, _) = resolve(&mut store, "acct", None);
+        store.get_mut("acct").unwrap().total_playtime = 4242;
+
+        let json = serde_json::to_string(&store).unwrap();
+        let reloaded: BTreeMap<String, DeviceIdentity> = serde_json::from_str(&json).unwrap();
+        assert_eq!(reloaded["acct"].total_playtime, 4242);
     }
 
     #[test]

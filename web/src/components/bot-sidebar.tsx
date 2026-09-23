@@ -17,6 +17,7 @@ const STATUS_COLOR: Record<BotStatus, string> = {
   server_overloaded: 'bg-red-500',
   too_many_logins: 'bg-purple-500',
   update_required: 'bg-gray-500',
+  login_failed: 'bg-red-600',
   maintenance: 'bg-amber-500',
 }
 
@@ -28,6 +29,7 @@ const STATUS_LABEL: Record<BotStatus, string> = {
   server_overloaded: 'Overloaded',
   too_many_logins: 'Too Many Logins',
   update_required: 'Update Required',
+  login_failed: 'Login Failed',
   maintenance: 'Maintenance',
 }
 

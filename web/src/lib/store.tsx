@@ -29,6 +29,7 @@ export interface LiveBot {
   inventory: InventoryItem[]
   inventory_slots: number
   console: string[]
+  status_detail: string | null
   delays: { place_ms: number; walk_ms: number; jitter_pct: number; twofa_secs: number; server_overload_secs: number; too_many_logins_secs: number; maintenance_secs: number }
   track_info: TrackInfo | null
   auto_collect: boolean
@@ -46,6 +47,7 @@ export function makeBot(id: number, username: string): LiveBot {
     world_width: 100, world_height: 60,
     tiles: [], players: new Map(),
     objects: [], inventory: [], inventory_slots: 0, console: [],
+    status_detail: null,
     delays: { place_ms: 500, walk_ms: 500, jitter_pct: 25, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
     track_info: null,
     auto_collect: true,

@@ -44,6 +44,7 @@ const STATUS_DOT: Record<BotStatus, string> = {
   server_overloaded: "bg-red-500",
   too_many_logins: "bg-purple-500",
   update_required: "bg-gray-500",
+  login_failed: "bg-red-600",
   maintenance: "bg-amber-500",
 };
 
@@ -67,6 +68,7 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
         return new Map(m).set(bot.id, {
           ...existing,
           status: s.status,
+          status_detail: s.status_detail,
           world_name: s.world_name,
           pos_x: s.pos_x,
           pos_y: s.pos_y,
@@ -103,6 +105,14 @@ export function BotDetail({ bot }: { bot: LiveBot }) {
           )}
         />
         <span className="font-semibold text-xs">{bot.username}</span>
+        {bot.status_detail && (
+          <span
+            className="text-xs text-red-500 truncate max-w-80"
+            title={bot.status_detail}
+          >
+            {bot.status_detail}
+          </span>
+        )}
         {bot.world_name && (
           <>
             <span className="text-border text-xs">|</span>

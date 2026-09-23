@@ -125,6 +125,8 @@ pub struct Bot {
     meta: String,
     /// Persistent identity and account persona for this bot, from `data/devices.json`.
     device: crate::device::DeviceIdentity,
+    /// Key this bot's identity is stored under: username for legacy, rid for ltoken.
+    device_key: String,
     /// Values taken from `device`, kept here for the hot paths.
     pub mac: String,
     hash: i32,
@@ -288,11 +290,12 @@ fn build_client_data(
     klv: &str,
     hash: i32,
     hash2: i32,
+    total_playtime: u64,
 ) -> String {
     format!(
         "tankIDName|\ntankIDPass|\nrequestedName|\nf|1\nprotocol|{PROTOCOL}\n\
 game_version|{GAME_VER}\nfz|{fz}\ncbits|{cbits}\nplayer_age|{age}\nGDPR|{gdpr}\nFCMToken|\n\
-category|_-5100\ntotalPlaytime|0\nklv|{klv}\nhash2|{hash2}\nmeta|{meta}\nfhash|{FHASH}\n\
+category|_-5100\ntotalPlaytime|{total_playtime}\nklv|{klv}\nhash2|{hash2}\nmeta|{meta}\nfhash|{FHASH}\n\
 rid|{rid}\nplatformID|0,1,1\ndeviceVersion|0\ncountry|{country}\nhash|{hash}\nmac|{mac}\n\
 wk|{wk}\nzf|{zf}\nlmode|1\n",
         fz = device.fz,
@@ -323,7 +326,7 @@ impl Bot {
         items_dat: Arc<ItemsDat>,
         bot_id: u32,
         ws_tx: Option<WsTx>,
-    ) -> Self {
+    ) -> Option<Self> {
         let log_state = Arc::clone(&state);
         let log_ws_tx = ws_tx.clone();
         let log_bot_id = bot_id;
@@ -357,7 +360,17 @@ impl Bot {
         let wk = identity.wk.clone();
         let rid = identity.rid.clone();
 
-        let creds = fetch_credentials(username, password, proxy.as_ref(), &identity, &mut log_fn);
+        let creds = match fetch_credentials(username, password, proxy.as_ref(), &identity, &mut log_fn)
+        {
+            Ok(c) => c,
+            Err(reason) => {
+                log_fn(format!("[Bot] login abandoned: {reason}"));
+                let mut s = state.write().unwrap();
+                s.status = BotStatus::LoginFailed;
+                s.status_detail = Some(reason);
+                return None;
+            }
+        };
 
         let host = Self::create_host(proxy.as_ref());
         let mut bot = Bot {
@@ -370,6 +383,7 @@ impl Bot {
             ltoken: creds.ltoken,
             meta: creds.meta,
             device: identity,
+            device_key: username.to_string(),
             mac,
             hash,
             hash2,
@@ -430,7 +444,7 @@ impl Bot {
             s.collect_blacklist = sorted_blacklist_vec(&bot.collect_blacklist);
         }
         bot.host.connect(creds.addr, 2, 0);
-        bot
+        Some(bot)
     }
 
     /// Parses a `token|rid|mac|wk` string.
@@ -454,9 +468,18 @@ impl Bot {
         items_dat: Arc<ItemsDat>,
         bot_id: u32,
         ws_tx: Option<WsTx>,
-    ) -> Self {
-        let (ltoken, rid, mac, wk) = Self::parse_ltoken_string(ltoken_str)
-            .expect("[Bot] Invalid ltoken string — expected token|rid|mac|wk");
+    ) -> Option<Self> {
+        let (ltoken, rid, mac, wk) = match Self::parse_ltoken_string(ltoken_str) {
+            Some(parts) => parts,
+            None => {
+                let reason = "invalid ltoken string - expected token|rid|mac|wk".to_string();
+                println!("[Bot] {reason}");
+                let mut s = state.write().unwrap();
+                s.status = BotStatus::LoginFailed;
+                s.status_detail = Some(reason);
+                return None;
+            }
+        };
 
         // rid/mac/wk come from the token itself; only hash2's seed needs storing so
         // it stays the same across reconnects of the same identity.
@@ -509,14 +532,28 @@ impl Bot {
         };
 
         let klv = compute_klv(GAME_VER, &PROTOCOL.to_string(), &rid, hash);
-        let login_data = build_client_data(&identity, &server_data.meta, &klv, hash, hash2);
+        let login_data = build_client_data(
+            &identity,
+            &server_data.meta,
+            &klv,
+            hash,
+            hash2,
+            identity.total_playtime,
+        );
 
         let ltoken = match check_token(&ltoken, &login_data, proxy_url_ref) {
             Ok(new_token) => {
                 log_fn(format!("[Bot] ltoken validated successfully"));
                 new_token
             }
-            Err(e) => panic!("[Bot] ltoken validation failed: {e} — stopping"),
+            Err(e) => {
+                let reason = format!("ltoken validation failed: {e}");
+                log_fn(format!("[Bot] {reason}"));
+                let mut s = state.write().unwrap();
+                s.status = BotStatus::LoginFailed;
+                s.status_detail = Some(reason);
+                return None;
+            }
         };
 
         let addr: SocketAddr = format!("{}:{}", server_data.server, server_data.port)
@@ -532,6 +569,7 @@ impl Bot {
             ltoken,
             meta: server_data.meta,
             device: identity,
+            device_key: rid.clone(),
             mac,
             hash,
             hash2,
@@ -591,7 +629,7 @@ impl Bot {
             s.collect_blacklist = sorted_blacklist_vec(&bot.collect_blacklist);
         }
         bot.host.connect(addr, 2, 0);
-        bot
+        Some(bot)
     }
 
     fn reconnect_main(&mut self) {
@@ -699,7 +737,7 @@ impl Bot {
         data.push_str(&format!("GDPR|{}\n", self.device.gdpr));
         data.push_str("FCMToken|\n");
         data.push_str("category|_-5100\n");
-        data.push_str("totalPlaytime|0\n");
+        data.push_str(&format!("totalPlaytime|{}\n", self.total_playtime()));
         data.push_str(&format!("klv|{klv}\n"));
         data.push_str(&format!("hash2|{}\n", self.hash2));
         data.push_str(&format!("meta|{}\n", self.meta));
@@ -727,7 +765,20 @@ impl Bot {
     /// Uses the bot's stable per-session values (rid, mac, wk, hash, hash2).
     fn build_login_data(&self) -> String {
         let klv = compute_klv(GAME_VER, &PROTOCOL.to_string(), &self.rid, self.hash);
-        build_client_data(&self.device, &self.meta, &klv, self.hash, self.hash2)
+        build_client_data(
+            &self.device,
+            &self.meta,
+            &klv,
+            self.hash,
+            self.hash2,
+            self.total_playtime(),
+        )
+    }
+
+    /// Playtime the account has accumulated: what the server last told us, plus the
+    /// time this session has been running.
+    fn total_playtime(&self) -> u64 {
+        self.device.total_playtime + self.start_time.elapsed().as_secs()
     }
 
     /// Refreshes `self.ltoken`: tries check_token first, then falls back based on login method.
@@ -784,8 +835,21 @@ impl Bot {
                     &device,
                     &mut log_fn,
                 );
-                self.ltoken = creds.ltoken;
-                self.meta = creds.meta;
+                match creds {
+                    Ok(creds) => {
+                        self.ltoken = creds.ltoken;
+                        self.meta = creds.meta;
+                    }
+                    Err(reason) => {
+                        self.log_console(format!("[Bot] re-login abandoned: {reason}"));
+                        {
+                            let mut s = self.state.write().unwrap();
+                            s.status = BotStatus::LoginFailed;
+                            s.status_detail = Some(reason);
+                        }
+                        self.stop_requested = true;
+                    }
+                }
             }
         }
     }
@@ -1236,6 +1300,10 @@ impl Bot {
                                 .get("Awesomeness")
                                 .and_then(|v| v.parse::<u32>().ok())
                                 .unwrap_or(0);
+                            if global_playtime > self.device.total_playtime {
+                                self.device.total_playtime = global_playtime;
+                                crate::device::store_playtime(&self.device_key, global_playtime);
+                            }
                             self.state.write().unwrap().track_info =
                                 Some(crate::bot_state::TrackInfo {
                                     level,
@@ -3195,7 +3263,7 @@ mod tests {
         device.country = "id".into();
         device.player_age = 27;
 
-        let payload = build_client_data(&device, "META", "KLV", 1, 2);
+        let payload = build_client_data(&device, "META", "KLV", 1, 2, 9000);
 
         assert_eq!(field(&payload, "country"), "id");
         assert_eq!(field(&payload, "player_age"), "27");
@@ -3207,6 +3275,7 @@ mod tests {
         assert_eq!(field(&payload, "wk"), device.wk);
         assert_eq!(field(&payload, "rid"), device.rid);
         assert_eq!(field(&payload, "protocol"), crate::constants::PROTOCOL.to_string());
+        assert_eq!(field(&payload, "totalPlaytime"), "9000");
     }
 
     #[test]
