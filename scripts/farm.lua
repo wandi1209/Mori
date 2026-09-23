@@ -145,6 +145,27 @@ local function goTo(x, y)
   return false
 end
 
+--- Puts the bot beside `x, y` rather than on top of it, so punches and
+--- placements go to the tile in front of the character the way a player's do.
+--- Falls back to standing on the tile when nothing next to it can be reached.
+local function goNextTo(x, y)
+  local me = getLocal()
+  local bx, by = math.floor(me.posx / 32), math.floor(me.posy / 32)
+  if math.abs(bx - x) + math.abs(by - y) == 1 then
+    return true
+  end
+
+  for _, d in ipairs({ { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) do
+    local nx, ny = x + d[1], y + d[2]
+    local tile = getTile(nx, ny)
+    if tile and tile.fg == 0 and goTo(nx, ny) then
+      return true
+    end
+  end
+
+  return goTo(x, y)
+end
+
 --- Warps and waits for the world to load. Returns false if it never arrives.
 local function goToWorld(name, id)
   if bot:isInWorld(name) then return true end
@@ -226,7 +247,7 @@ local function harvest(crop)
     end
     if not bot:isInWorld(CONFIG.world) then return picked end
 
-    if goTo(plot.x, plot.y) then
+    if goNextTo(plot.x, plot.y) then
       punchUntilClear(crop, plot.x, plot.y)
       picked = picked + 1
     end
@@ -256,7 +277,7 @@ local function breakBlocks(crop)
       plot = free[math.random(#free)]
     end
 
-    if goTo(plot.x, plot.y) then
+    if goNextTo(plot.x, plot.y) then
       placeTile(plot.x, plot.y, crop.block_id)
       nap(CONFIG.action_delay_ms)
       punchUntilClear(crop, plot.x, plot.y)
@@ -281,7 +302,7 @@ local function plant(crop)
     if inv(crop.seed_id) <= 0 then break end
     if not bot:isInWorld(CONFIG.world) then break end
 
-    if not goTo(plot.x, plot.y) then
+    if not goNextTo(plot.x, plot.y) then
       unreachable = unreachable + 1
     else
       placeTile(plot.x, plot.y, crop.seed_id)

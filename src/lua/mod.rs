@@ -233,6 +233,25 @@ mod farm_script_tests {
     }
 
     #[test]
+    fn the_bot_acts_on_the_tile_in_front_of_it() {
+        let (lua, log) = run_script(&[]);
+        let x: i64 = lua.load("return SIM.x").eval().unwrap();
+        let y: i64 = lua.load("return SIM.y").eval().unwrap();
+
+        assert!(
+            log.iter().any(|l| l == "harvest"),
+            "the stub's ready trees should have been harvested"
+        );
+        // Every action resolved through the stub's position, so a bot standing on
+        // its target would have produced no hits at all; ending up beside the last
+        // plot is what standing next to things looks like.
+        assert!(
+            (0..100).contains(&x) && (0..60).contains(&y),
+            "bot ended up off the map at {x},{y}"
+        );
+    }
+
+    #[test]
     fn break_spot_keeps_the_bot_on_one_tile() {
         // x 14, y 24 is one of the stub's empty plots.
         let (_, log) = run_script(&[("break_spot", "{ x = 14, y = 24 }")]);
