@@ -512,9 +512,10 @@ every cycle, so the rhythm never repeats exactly.
 
 #### `set_auto_collect`
 Enable or disable automatic collection of nearby dropped items. The radius defaults
-to 1 tile, which is what a client produces — it collects what the character touches.
-Raising it (`set_collect_config`, or `collect_range` in Lua, max 5) pulls drops in
-from across the room while the bot stands still.
+to 3 tiles: a harvested tree scatters its drops a couple of tiles and gems further
+still, so a 1-tile radius — what a client actually produces, since it collects what
+the character touches — leaves most of a harvest on the floor. It is configurable
+per bot through `set_collect_config`, or `collect_range` in Lua, up to 5.
 ```json
 { "type": "set_auto_collect", "enabled": true }
 ```

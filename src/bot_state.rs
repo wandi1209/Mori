@@ -197,8 +197,9 @@ pub struct BotState {
     pub auto_collect: bool,
     /// Auto-collect half-extent in tiles (1–5): axis-aligned square |Δx|,|Δy| ≤ tiles×32 px.
     /// Auto-collect radius in tiles (1-5). A client collects what the character
-    /// touches, so 1 is what a player produces; larger values pull drops in from
-    /// across the room without moving.
+    /// touches, so 1 is the honest value; drops scatter a couple of tiles when a
+    /// tree is harvested, and gems further still, so the default trades some of
+    /// that for not leaving the crop on the floor.
     pub collect_radius_tiles: u8,
     /// Item IDs to skip when auto-collecting (sorted, unique in API responses).
     pub collect_blacklist: Vec<u16>,
@@ -244,7 +245,7 @@ impl Default for BotState {
             script_running: false,
             track_info: None,
             auto_collect: true,
-            collect_radius_tiles: 1,
+            collect_radius_tiles: 3,
             collect_blacklist: Vec::new(),
             ignore_gems: false,
             ignore_essences: false,

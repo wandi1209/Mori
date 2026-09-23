@@ -55,7 +55,7 @@ export function makeBot(id: number, username: string): LiveBot {
     delays: { place_ms: 500, walk_ms: 500, jitter_pct: 25, twofa_secs: 120, server_overload_secs: 30, too_many_logins_secs: 5, maintenance_secs: 600 },
     track_info: null,
     auto_collect: true,
-    collect_radius_tiles: 1,
+    collect_radius_tiles: 3,
     collect_blacklist: [],
     auto_reconnect: true,
   }
